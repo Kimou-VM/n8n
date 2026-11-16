@@ -18,7 +18,7 @@ import { WorkflowRunner } from '@/workflow-runner';
 import { NodeTypes } from '../../node-types';
 import { OwnershipService } from '../../services/ownership.service';
 import type { ExecutionCancelService } from '../../executions/execution-cancel.service';
-import { CHAT_CANCELABLE_STATUSES, ChatExecutionManager } from '../chat-execution-manager';
+import { ChatExecutionManager } from '../chat-execution-manager';
 import type { ChatMessage } from '../chat-service.types';
 
 describe('ChatExecutionManager', () => {
@@ -116,7 +116,7 @@ describe('ChatExecutionManager', () => {
 
 			expect(executionCancelService.markAsCanceled).toHaveBeenCalledWith(
 				['1'],
-				CHAT_CANCELABLE_STATUSES,
+				['running', 'waiting', 'unknown'],
 			);
 		});
 

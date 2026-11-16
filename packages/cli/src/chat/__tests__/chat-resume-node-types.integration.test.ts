@@ -9,7 +9,7 @@ import type { ExecutionPersistence } from '@/executions/execution-persistence';
 
 import { NodeTypes } from '../../node-types';
 import type { ExecutionCancelService } from '../../executions/execution-cancel.service';
-import { CHAT_CANCELABLE_STATUSES, ChatExecutionManager } from '../chat-execution-manager';
+import { ChatExecutionManager } from '../chat-execution-manager';
 import type { ChatMessage } from '../chat-service.types';
 
 /**
@@ -173,7 +173,7 @@ describe('chat resume — real node-type onMessage mapping', () => {
 
 			expect(executionCancelService.markAsCanceled).toHaveBeenCalledWith(
 				['1'],
-				CHAT_CANCELABLE_STATUSES,
+				['running', 'waiting', 'unknown'],
 			);
 		});
 

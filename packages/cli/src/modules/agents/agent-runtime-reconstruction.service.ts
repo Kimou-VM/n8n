@@ -13,7 +13,7 @@ import {
 	CredentialProvider,
 	ModelConfig,
 } from '@n8n/agents';
-import { withLinearGuard } from '../mcp-guard/linear-guard-fetch';
+import { withMcpGuard } from '../mcp-guard/mcp-guard-fetch';
 import { getProviderPrefix } from '@n8n/ai-utilities/agent-config';
 import {
 	N8N_CHAT_ACTION_TOOL_NAME,
@@ -859,9 +859,7 @@ export class AgentRuntimeReconstructionService {
 				projectId,
 				// Test chat only: Linear MCP goes through the read-only guard.
 				proxyFetch:
-					options.runType === 'test'
-						? withLinearGuard(aiMcpFetch, memoryOwnerAgentId)
-						: aiMcpFetch,
+					options.runType === 'test' ? withMcpGuard(aiMcpFetch, memoryOwnerAgentId) : aiMcpFetch,
 				resolveRegistryConnection: async (nodeTypeName) => {
 					const connection = await this.mcpRegistryService.getConnection(nodeTypeName);
 					if (connection?.attribution) {

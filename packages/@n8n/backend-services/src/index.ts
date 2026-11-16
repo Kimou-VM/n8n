@@ -25,6 +25,12 @@ export {
 	CREDENTIAL_USABILITY_SCOPES,
 	type UnusableCredential,
 } from './credentials/credentials-finder.service';
+export {
+	CodeExecutionBackend,
+	type CodeExecutionBackendStatus,
+	type CodeTaskRequest,
+	toCodeTaskRequest,
+} from './code-execution/code-execution-backend';
 export { UncacheableValueError } from './errors/cache-errors/uncacheable-value.error';
 export { CacheService } from './services/cache/cache.service';
 export type { Hash, MaybeHash } from './services/cache/cache.types';
@@ -101,6 +107,7 @@ export {
 	type PublishedWorkflowData,
 	type PublishedWorkflowDataForExecution,
 } from './workflows/workflow-published-data.service';
+export { WorkflowVersionedSettingsService } from './workflows/workflow-versioned-settings.service';
 
 export {
 	RuntimeCredentialProxyService,

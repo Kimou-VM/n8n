@@ -8,6 +8,7 @@ import { computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import CredentialTypesTab from './CredentialTypesTab.vue';
+import CredentialTypeAccessDialog from './access-dialog/CredentialTypeAccessDialog.vue';
 import { useInstancePolicy } from './useInstancePolicy';
 import { usePolicyAdminAccess } from '../composables/usePolicyAdminAccess';
 import {
@@ -40,9 +41,30 @@ const activeTab = computed<RestrictedTypeKind | undefined>({
 		return manageableKinds.value.find((kind) => kind === requested) ?? manageableKinds.value[0];
 	},
 	set: (tab) => {
-		void router.replace({ query: { ...route.query, tab } });
+		// The open dialog belongs to the tab, so another tab closes it.
+		const { details: _closed, ...query } = route.query;
+		void router.replace({ query: { ...query, tab } });
 	},
 });
+
+// The open dialog lives in the query, as `?details=<type name>&tab=<kind>`, so a link can open it.
+// A link without a tab names a node type. A link to a tab that the user cannot see opens nothing,
+// because the fallback tab is of another kind.
+const details = computed(() => {
+	const { details: name, tab = 'node' } = route.query;
+	return typeof name === 'string' && name && tab === activeTab.value
+		? { kind: activeTab.value, name }
+		: undefined;
+});
+
+function openDetails(name: string) {
+	void router.replace({ query: { ...route.query, tab: activeTab.value, details: name } });
+}
+
+function closeDetails() {
+	const { details: _closed, ...query } = route.query;
+	void router.replace({ query });
+}
 
 // A user who skips the landing page on the way in goes back to Policies.
 const back = computed(() =>
@@ -88,12 +110,18 @@ onMounted(() => {
 				data-test-id="instance-policy-tabs"
 			/>
 		</DefineTabs>
-		<CredentialTypesTab v-if="activeTab === 'credential'">
+		<CredentialTypesTab v-if="activeTab === 'credential'" @open="openDetails">
 			<template #toolbar-start>
 				<ReuseTabs />
 			</template>
 		</CredentialTypesTab>
 		<ReuseTabs v-else-if="activeTab" />
+		<CredentialTypeAccessDialog
+			v-if="details?.kind === 'credential'"
+			open
+			:credential-type="details.name"
+			@update:open="closeDetails"
+		/>
 	</N8nSettingsLayout>
 </template>
 

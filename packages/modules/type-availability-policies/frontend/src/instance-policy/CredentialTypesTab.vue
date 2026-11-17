@@ -5,7 +5,7 @@ import { computed, onMounted, shallowRef } from 'vue';
 
 import { credentialTypeIcon, FALLBACK_TYPE_ICON } from './credentialTypeIcon';
 import InstancePolicyTable, { type InstancePolicyTableRow } from './InstancePolicyTable.vue';
-import { setCredentialTypeAccess } from './setCredentialTypeAccess';
+import { withTypeAccess } from './typeAccessRule';
 import { useInstanceTypeAccess } from './useInstanceTypeAccess';
 import { useAppliedTheme } from '../composables/useAppliedTheme';
 import {
@@ -13,12 +13,14 @@ import {
 	type CredentialTypeSummary,
 } from '../type-availability-policies.api';
 
+const emit = defineEmits<{ open: [name: string] }>();
+
 const i18n = useI18n();
 const rootStore = useRootStore();
 const theme = useAppliedTheme();
 const { types, loading, changeAccess } = useInstanceTypeAccess(
 	'credential',
-	setCredentialTypeAccess,
+	(policy, name, access) => withTypeAccess('credential', policy, name, access),
 );
 
 const typeSummaries = shallowRef(new Map<string, CredentialTypeSummary>());
@@ -62,6 +64,7 @@ onMounted(async () => {
 		"
 		data-test-id="credential-types-tab"
 		@change="changeAccess"
+		@open="(name) => emit('open', name)"
 	>
 		<template #toolbar-start>
 			<slot name="toolbar-start" />

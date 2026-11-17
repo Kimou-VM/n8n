@@ -22,6 +22,14 @@ import { ExecutionLimitsSnapshot } from './execution-limits-snapshot';
 import type { ApplicableLimits, ProjectLimit } from './execution-limits.types';
 import { ProjectExecutionLimitRepository } from './project-execution-limit.repository';
 
+function rejectIfAny(
+	projectIds: string[],
+	message: string,
+	ErrorClass: typeof BadRequestError | typeof NotFoundError = BadRequestError,
+): void {
+	if (projectIds.length > 0) throw new ErrorClass(`${message}: ${projectIds.join(', ')}`);
+}
+
 @Service()
 export class ExecutionLimitsService {
 	constructor(
@@ -75,14 +83,33 @@ export class ExecutionLimitsService {
 
 	/** Sets the limit of one or many projects. One limit that is not valid rejects all of them. */
 	async setProjectLimits(limits: ProjectLimit[]): Promise<void> {
-		this.assertNoDuplicateProjects(limits);
-		this.assertMaxExecutionsInRange(limits);
-		await this.assertProjectsExist(limits.map(({ projectId }) => projectId));
+		const projectIds = limits.map(({ projectId }) => projectId);
+		rejectIfAny(findDuplicateProjectIds(limits), 'A project can have only one execution limit');
+		rejectIfAny(
+			limits
+				.filter(
+					({ maxExecutions }) =>
+						!executionLimitMaxExecutionsSchema.safeParse(maxExecutions).success,
+				)
+				.map(({ projectId }) => projectId),
+			'The execution limit of these projects is out of range',
+		);
+		const existing = new Set(
+			(await this.projectRepository.findTypesByIds(projectIds)).map(({ id }) => id),
+		);
+		rejectIfAny(
+			projectIds.filter((id) => !existing.has(id)),
+			'These projects do not exist',
+			NotFoundError,
+		);
 
 		try {
 			await this.commit(async (ctx) => {
 				const { instanceMaxExecutions } = await this.settingsStore.read(ctx);
-				this.assertNotAboveInstanceLimit(limits, instanceMaxExecutions);
+				rejectIfAny(
+					findProjectLimitsAboveInstanceLimit(limits, instanceMaxExecutions),
+					`The execution limit of these projects is above the instance limit of ${instanceMaxExecutions}`,
+				);
 
 				await this.projectLimitRepository.upsertMany(limits, ctx);
 			});
@@ -111,49 +138,5 @@ export class ExecutionLimitsService {
 		await this.snapshot.refreshAfterWrite();
 
 		return result;
-	}
-
-	private assertNoDuplicateProjects(limits: ProjectLimit[]): void {
-		const duplicates = findDuplicateProjectIds(limits);
-		if (duplicates.length > 0) {
-			throw new BadRequestError(
-				`A project can have only one execution limit: ${duplicates.join(', ')}`,
-			);
-		}
-	}
-
-	private assertMaxExecutionsInRange(limits: ProjectLimit[]): void {
-		const outOfRange = limits
-			.filter(
-				({ maxExecutions }) => !executionLimitMaxExecutionsSchema.safeParse(maxExecutions).success,
-			)
-			.map(({ projectId }) => projectId);
-		if (outOfRange.length > 0) {
-			throw new BadRequestError(
-				`The execution limit of these projects is out of range: ${outOfRange.join(', ')}`,
-			);
-		}
-	}
-
-	private async assertProjectsExist(projectIds: string[]): Promise<void> {
-		const existing = new Set(
-			(await this.projectRepository.findTypesByIds(projectIds)).map(({ id }) => id),
-		);
-		const missing = projectIds.filter((id) => !existing.has(id));
-		if (missing.length > 0) {
-			throw new NotFoundError(`These projects do not exist: ${missing.join(', ')}`);
-		}
-	}
-
-	private assertNotAboveInstanceLimit(
-		limits: ProjectLimit[],
-		instanceMaxExecutions: number | null,
-	): void {
-		const tooHigh = findProjectLimitsAboveInstanceLimit(limits, instanceMaxExecutions);
-		if (tooHigh.length > 0) {
-			throw new BadRequestError(
-				`The execution limit of these projects is above the instance limit of ${instanceMaxExecutions}: ${tooHigh.join(', ')}`,
-			);
-		}
 	}
 }

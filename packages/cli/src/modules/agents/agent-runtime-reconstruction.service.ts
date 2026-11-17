@@ -13,7 +13,7 @@ import {
 	CredentialProvider,
 	ModelConfig,
 } from '@n8n/agents';
-import { withMcpGuard } from '../mcp-guard/mcp-guard-fetch';
+import { GUARDED_CALL_TIMEOUT_MS, isGuardedUrl, withMcpGuard } from '../mcp-guard/mcp-guard-fetch';
 import { getProviderPrefix } from '@n8n/ai-utilities/agent-config';
 import {
 	N8N_CHAT_ACTION_TOOL_NAME,
@@ -85,6 +85,7 @@ import { N8nMemory } from './integrations/n8n-memory';
 import {
 	buildFromJson,
 	buildProviderToolsForModel,
+	resolveModelConfig,
 	type MemoryFactory,
 	type ManagedEmbeddingProviderOptions,
 	type ToolResolver,
@@ -857,9 +858,18 @@ export class AgentRuntimeReconstructionService {
 				nonInterrupting: runtimeProfile === 'inline',
 				oauthService: this.oauthService,
 				projectId,
+				// A guarded call can wait for a hydration. Give it more time than the MCP SDK default.
+				...(options.runType === 'test' &&
+					isGuardedUrl(server.url) && { callTimeoutMs: GUARDED_CALL_TIMEOUT_MS }),
 				// Test chat only: Linear MCP goes through the read-only guard.
 				proxyFetch:
-					options.runType === 'test' ? withMcpGuard(aiMcpFetch, memoryOwnerAgentId) : aiMcpFetch,
+					options.runType === 'test'
+						? withMcpGuard(aiMcpFetch, memoryOwnerAgentId, {
+								// The hydration agent uses the model of the agent under test.
+								resolve: async () => await resolveModelConfig(options.config, credentialProvider),
+								fetch: createAiProxyFetch(this.outboundHttp),
+							})
+						: aiMcpFetch,
 				resolveRegistryConnection: async (nodeTypeName) => {
 					const connection = await this.mcpRegistryService.getConnection(nodeTypeName);
 					if (connection?.attribution) {

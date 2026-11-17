@@ -36,7 +36,7 @@ export function useRelatedTypeIndex() {
 			await typeDescriptions.load();
 			typesLoaded.value = true;
 		} catch (error) {
-			toast.showError(error, i18n.baseText('typeAvailabilityPolicies.nodeDialog.loadError'));
+			toast.showError(error, i18n.baseText('typeAvailabilityPolicies.accessDialog.loadError'));
 		}
 	});
 
@@ -51,12 +51,12 @@ export function useRelatedTypeIndex() {
 		const sections: RelatedTypeSection[] = [
 			{
 				kind: 'node',
-				heading: i18n.baseText('typeAvailabilityPolicies.nodeDialog.related.nodes'),
+				heading: i18n.baseText('typeAvailabilityPolicies.accessDialog.related.nodes'),
 				items: related.nodeTypes.map((name) => ({ name, label: nodeLabel(name) })).sort(byLabel),
 			},
 			{
 				kind: 'credential',
-				heading: i18n.baseText('typeAvailabilityPolicies.nodeDialog.related.credentials'),
+				heading: i18n.baseText('typeAvailabilityPolicies.accessDialog.related.credentials'),
 				items: related.credentialTypes
 					.map((name) => ({ name, label: credentialLabel(name) }))
 					.sort(byLabel),

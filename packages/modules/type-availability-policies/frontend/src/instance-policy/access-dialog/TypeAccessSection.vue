@@ -76,7 +76,7 @@ const visibleItems = computed(() => (expanded.value ? items : items.slice(0, SEC
 			@click="expanded = true"
 		>
 			{{
-				i18n.baseText('typeAvailabilityPolicies.nodeDialog.related.more', {
+				i18n.baseText('typeAvailabilityPolicies.accessDialog.related.more', {
 					interpolate: { count: String(items.length - SECTION_LIMIT) },
 				})
 			}}

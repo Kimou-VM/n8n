@@ -20,7 +20,7 @@ const sections = computed(() => toSections(getCredentialRelatedTypes(credentialT
 
 const descriptionKey = computed<BaseTextKey>(() =>
 	sections.value.some((section) => section.kind === 'credential')
-		? 'typeAvailabilityPolicies.nodeDialog.related.description'
+		? 'typeAvailabilityPolicies.accessDialog.related.description'
 		: 'typeAvailabilityPolicies.credentialDialog.related.nodesOnly',
 );
 </script>

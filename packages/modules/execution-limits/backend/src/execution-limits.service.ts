@@ -15,7 +15,6 @@ import { BadRequestError, NotFoundError } from '@n8n/errors';
 import {
 	findDuplicateProjectIds,
 	findProjectLimitsAboveInstanceLimit,
-	resolveApplicableLimits,
 } from './execution-limit-rules';
 import { ExecutionLimitSettingsStore } from './execution-limit-settings.store';
 import { ExecutionLimitsSnapshot } from './execution-limits-snapshot';
@@ -45,9 +44,7 @@ export class ExecutionLimitsService {
 	 * at every execution start. `null` means that this process has not loaded the limits yet.
 	 */
 	getApplicableLimits(projectId: string): ApplicableLimits | null {
-		const loaded = this.snapshot.read(projectId);
-
-		return loaded ? resolveApplicableLimits(loaded.settings, loaded.projectMaxExecutions) : null;
+		return this.snapshot.read(projectId);
 	}
 
 	/** The period, the instance limit and the default limit for new projects. */
@@ -129,10 +126,7 @@ export class ExecutionLimitsService {
 		});
 	}
 
-	/**
-	 * Every write goes through here. The limits in memory reload after the commit, because a
-	 * reload inside the transaction does not see the change.
-	 */
+	/** Every write goes through here, so the limits in memory reload after each commit. */
 	private async commit<T>(write: (ctx: OperationContext) => Promise<T>): Promise<T> {
 		const result = await this.transactionRunner.run({}, write);
 		await this.snapshot.refreshAfterWrite();

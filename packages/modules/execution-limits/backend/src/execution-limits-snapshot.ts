@@ -6,17 +6,8 @@ import { Service } from '@n8n/di';
 import { latestWins } from '@n8n/utils/promise/latest-wins';
 
 import { ExecutionLimitSettingsStore } from './execution-limit-settings.store';
+import type { ApplicableLimits } from './execution-limits.types';
 import { ProjectExecutionLimitRepository } from './project-execution-limit.repository';
-
-type Loaded = {
-	readonly settings: ExecutionLimitSettings;
-	readonly projectMaxExecutions: ReadonlyMap<string, number>;
-};
-
-export type LoadedLimits = {
-	settings: ExecutionLimitSettings;
-	projectMaxExecutions: number | null;
-};
 
 /**
  * Every execution limit, held in memory so a read at an execution start does no I/O.
@@ -28,7 +19,10 @@ export type LoadedLimits = {
  */
 @Service()
 export class ExecutionLimitsSnapshot {
-	private loaded: Loaded | null = null;
+	private loaded: {
+		settings: ExecutionLimitSettings;
+		projectMaxExecutions: ReadonlyMap<string, number>;
+	} | null = null;
 
 	constructor(
 		private readonly settingsStore: ExecutionLimitSettingsStore,
@@ -40,23 +34,30 @@ export class ExecutionLimitsSnapshot {
 	}
 
 	/** `null` until the first load succeeds. */
-	read(projectId: string): LoadedLimits | null {
+	read(projectId: string): ApplicableLimits | null {
 		if (!this.loaded) return null;
 
 		return {
-			settings: this.loaded.settings,
+			periodUnit: this.loaded.settings.periodUnit,
+			instanceMaxExecutions: this.loaded.settings.instanceMaxExecutions,
 			projectMaxExecutions: this.loaded.projectMaxExecutions.get(projectId) ?? null,
 		};
 	}
 
-	/** A failed first load does not stop the boot. The next reload tries again. */
-	async start(): Promise<void> {
-		await this.reloadAndLog();
+	/** A failed reload keeps the limits that are loaded, and the next reload tries again. */
+	@OnPubSubEvent('reload-execution-limits')
+	@OnPubSubEvent('pubsub-reconnected')
+	async reload(): Promise<void> {
+		try {
+			await this.loadLatest();
+		} catch (error) {
+			this.logger.error('Failed to load execution limits', { error });
+		}
 	}
 
 	/** Call after a limit write commits, never inside its transaction. */
 	async refreshAfterWrite(): Promise<void> {
-		await this.reloadAndLog();
+		await this.reload();
 
 		// Not awaited: a disconnected Redis queues the publish, and the write already committed.
 		void this.publisher
@@ -66,24 +67,7 @@ export class ExecutionLimitsSnapshot {
 			});
 	}
 
-	@OnPubSubEvent('reload-execution-limits')
-	@OnPubSubEvent('pubsub-reconnected')
-	async handleReloadRequest(): Promise<void> {
-		await this.reloadAndLog();
-	}
-
-	private readonly reload = latestWins(async () => await this.load());
-
-	/** A failed reload keeps the limits that are loaded. */
-	private async reloadAndLog(): Promise<void> {
-		try {
-			await this.reload();
-		} catch (error) {
-			this.logger.error('Failed to load execution limits', { error });
-		}
-	}
-
-	private async load(): Promise<void> {
+	private readonly loadLatest = latestWins(async () => {
 		const [settings, projectLimits] = await Promise.all([
 			this.settingsStore.read({}),
 			this.projectLimitRepository.findAll({}),
@@ -95,5 +79,5 @@ export class ExecutionLimitsSnapshot {
 				projectLimits.map(({ projectId, maxExecutions }) => [projectId, maxExecutions]),
 			),
 		};
-	}
+	});
 }

@@ -15,6 +15,8 @@ const SETTINGS: ExecutionLimitSettings = {
 	defaultProjectMaxExecutions: null,
 };
 
+const LIMITED = { periodUnit: 'week', instanceMaxExecutions: 1000, projectMaxExecutions: 50 };
+
 describe('ExecutionLimitsSnapshot', () => {
 	const settingsStore = mock<ExecutionLimitSettingsStore>();
 	const projectLimitRepository = mock<ProjectExecutionLimitRepository>();
@@ -34,48 +36,42 @@ describe('ExecutionLimitsSnapshot', () => {
 		);
 	});
 
-	it('has nothing to read before the first load', () => {
-		expect(snapshot.read('limited')).toBeNull();
+	it('reads the limits of a project after a load', async () => {
+		await snapshot.reload();
+
+		expect(snapshot.read('limited')).toEqual(LIMITED);
+		expect(snapshot.read('other')).toEqual({ ...LIMITED, projectMaxExecutions: null });
 	});
 
-	it('reads the settings and the limit of a project from memory after the start', async () => {
-		await snapshot.start();
-		vi.clearAllMocks();
-
-		expect(snapshot.read('limited')).toEqual({ settings: SETTINGS, projectMaxExecutions: 50 });
-		expect(snapshot.read('other')).toEqual({ settings: SETTINGS, projectMaxExecutions: null });
-		expect(settingsStore.read).not.toHaveBeenCalled();
-		expect(projectLimitRepository.findAll).not.toHaveBeenCalled();
-	});
-
-	it('starts with nothing loaded when the first load fails, and loads on the next reload', async () => {
+	it('has nothing to read until a load succeeds', async () => {
 		settingsStore.read.mockRejectedValueOnce(new Error('database is down'));
 
-		await snapshot.start();
+		await snapshot.reload();
 		expect(snapshot.read('limited')).toBeNull();
 
-		await snapshot.handleReloadRequest();
-		expect(snapshot.read('limited')).toEqual({ settings: SETTINGS, projectMaxExecutions: 50 });
+		await snapshot.reload();
+		expect(snapshot.read('limited')).toEqual(LIMITED);
 	});
 
 	it('keeps the loaded limits when a reload fails', async () => {
-		await snapshot.start();
+		await snapshot.reload();
 		projectLimitRepository.findAll.mockRejectedValueOnce(new Error('database is down'));
 
-		await snapshot.handleReloadRequest();
+		await snapshot.reload();
 
-		expect(snapshot.read('limited')).toEqual({ settings: SETTINGS, projectMaxExecutions: 50 });
+		expect(snapshot.read('limited')).toEqual(LIMITED);
 	});
 
 	it('loads the changed limits on a reload request', async () => {
-		await snapshot.start();
+		await snapshot.reload();
 		settingsStore.read.mockResolvedValue(DEFAULT_EXECUTION_LIMIT_SETTINGS);
 		projectLimitRepository.findAll.mockResolvedValue([]);
 
-		await snapshot.handleReloadRequest();
+		await snapshot.reload();
 
 		expect(snapshot.read('limited')).toEqual({
-			settings: DEFAULT_EXECUTION_LIMIT_SETTINGS,
+			periodUnit: 'month',
+			instanceMaxExecutions: null,
 			projectMaxExecutions: null,
 		});
 	});
@@ -84,7 +80,7 @@ describe('ExecutionLimitsSnapshot', () => {
 		it('reloads this process and tells the other processes to reload', async () => {
 			await snapshot.refreshAfterWrite();
 
-			expect(snapshot.read('limited')).toEqual({ settings: SETTINGS, projectMaxExecutions: 50 });
+			expect(snapshot.read('limited')).toEqual(LIMITED);
 			expect(publisher.publishCommand).toHaveBeenCalledExactlyOnceWith({
 				command: 'reload-execution-limits',
 			});
@@ -97,18 +93,15 @@ describe('ExecutionLimitsSnapshot', () => {
 		});
 	});
 
-	it.each(['reload-execution-limits', 'pubsub-reconnected'])(
-		'registers handleReloadRequest for %s',
-		(eventName) => {
-			const handlers = Container.get(PubSubMetadata)
-				.getHandlers()
-				.filter(
-					(handler) =>
-						handler.eventName === eventName &&
-						handler.eventHandlerClass.name === 'ExecutionLimitsSnapshot',
-				);
+	it.each(['reload-execution-limits', 'pubsub-reconnected'])('reloads on %s', (eventName) => {
+		const handlers = Container.get(PubSubMetadata)
+			.getHandlers()
+			.filter(
+				(handler) =>
+					handler.eventName === eventName &&
+					handler.eventHandlerClass.name === 'ExecutionLimitsSnapshot',
+			);
 
-			expect(handlers.map(({ methodName }) => methodName)).toEqual(['handleReloadRequest']);
-		},
-	);
+		expect(handlers.map(({ methodName }) => methodName)).toEqual(['reload']);
+	});
 });

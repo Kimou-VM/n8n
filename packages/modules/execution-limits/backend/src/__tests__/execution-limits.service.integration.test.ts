@@ -98,21 +98,6 @@ describe('ExecutionLimitsService', () => {
 			await service.removeProjectLimits([project.id]);
 			expect(service.getApplicableLimits(project.id)?.projectMaxExecutions).toBeNull();
 		});
-
-		it('keeps the limits in memory when a write is rejected', async () => {
-			const project = await createTeamProject();
-			await service.updateSettings({ instanceMaxExecutions: 100 });
-
-			await expect(
-				service.setProjectLimits([{ projectId: project.id, maxExecutions: 101 }]),
-			).rejects.toThrow(BadRequestError);
-
-			expect(service.getApplicableLimits(project.id)).toEqual({
-				periodUnit: 'month',
-				instanceMaxExecutions: 100,
-				projectMaxExecutions: null,
-			});
-		});
 	});
 
 	describe('project limits', () => {

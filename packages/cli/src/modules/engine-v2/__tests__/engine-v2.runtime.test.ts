@@ -1,6 +1,6 @@
 import type { HttpRequestClient } from '@n8n/backend-network';
 import { mockLogger } from '@n8n/backend-test-utils';
-import type { EngineConfig } from '@n8n/config';
+import type { EngineConfig, ExecutionsConfig } from '@n8n/config';
 import {
 	mintApprovalCallback,
 	mintResumeToken,
@@ -153,9 +153,14 @@ describe('EngineV2Runtime', () => {
 		lifecycleEventSender: { send: vi.fn().mockResolvedValue(undefined) },
 	});
 
-	const newRuntime = (databaseUrl = 'postgres://engine', config: Partial<EngineConfig> = {}) =>
+	const newRuntime = (
+		databaseUrl = 'postgres://engine',
+		config: Partial<EngineConfig> = {},
+		executions: Partial<ExecutionsConfig> = {},
+	) =>
 		new EngineV2Runtime(
 			engineConfig(databaseUrl, config),
+			mock<ExecutionsConfig>({ pruneData: true, pruneDataMaxAge: 336, ...executions }),
 			{ enabled: false, createServer: mocks.createServer } as unknown as EngineMtls,
 			nodeTypes,
 			mockLogger(),
@@ -240,6 +245,21 @@ describe('EngineV2Runtime', () => {
 			expect(mocks.createEngineRuntime).toHaveBeenCalledWith(
 				expect.objectContaining({ concurrency: { step: 4, orchestration: 2 } }),
 			);
+		});
+
+		it('deletes ended executions older than EXECUTIONS_DATA_MAX_AGE hours', async () => {
+			await newRuntime('postgres://engine', {}, { pruneDataMaxAge: 24 }).init(senders());
+
+			expect(mocks.createEngineRuntime).toHaveBeenCalledWith(
+				expect.objectContaining({ retention: { maxAgeMs: 86_400_000 } }),
+			);
+		});
+
+		it('deletes no executions when EXECUTIONS_DATA_PRUNE is false', async () => {
+			await newRuntime('postgres://engine', {}, { pruneData: false }).init(senders());
+
+			const options = mocks.createEngineRuntime.mock.calls[0][0] as { retention?: unknown };
+			expect(options.retention).toBeUndefined();
 		});
 
 		it('starts the engine', async () => {

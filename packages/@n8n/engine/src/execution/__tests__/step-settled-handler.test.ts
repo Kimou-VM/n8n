@@ -91,6 +91,7 @@ function makeExecutionStore(
 		renewQueuedExecution: vi.fn(),
 		refreshLiveStatus: vi.fn(),
 		findPrunableExecutions: vi.fn(),
+		findRetentionCountCutoff: vi.fn(),
 		deleteEndedExecutions: vi.fn(),
 		...storeOverrides,
 	};

@@ -37,6 +37,7 @@ function makeStore(overrides: Partial<ExecutionStore> = {}): ExecutionStore {
 		renewQueuedExecution: vi.fn(),
 		refreshLiveStatus: vi.fn(),
 		findPrunableExecutions: vi.fn(),
+		findRetentionCountCutoff: vi.fn(),
 		deleteEndedExecutions: vi.fn(),
 		...overrides,
 	};

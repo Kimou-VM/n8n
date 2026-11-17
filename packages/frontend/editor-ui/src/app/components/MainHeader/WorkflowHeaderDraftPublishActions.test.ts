@@ -237,7 +237,11 @@ describe('WorkflowHeaderDraftPublishActions', () => {
 		useReviewRequiredStore().setReviewRequired(defaultWorkflowProps.id, false);
 		// The testing pinia is shared across this file, so reset the review status to
 		// "fetched, no open review" between tests.
-		vi.mocked(fetchWorkflowReviewRequests).mockResolvedValue({ count: 0, data: [] });
+		vi.mocked(fetchWorkflowReviewRequests).mockResolvedValue({
+			count: 0,
+			data: [],
+			reviewRequiredBy: null,
+		});
 		await useWorkflowReviewStatusStore().fetchStatus(defaultWorkflowProps.id);
 
 		const nodeTypesStore = useNodeTypesStore();
@@ -591,6 +595,7 @@ describe('WorkflowHeaderDraftPublishActions', () => {
 		const seedOpenReview = (overrides: Partial<WorkflowReviewRequestForWorkflow> = {}) => {
 			vi.mocked(fetchWorkflowReviewRequests).mockResolvedValue({
 				count: 1,
+				reviewRequiredBy: null,
 				data: [
 					{
 						id: 'req-1',
@@ -1641,6 +1646,7 @@ describe('WorkflowHeaderDraftPublishActions', () => {
 			setupEnabledPublishButton();
 			vi.mocked(fetchWorkflowReviewRequests).mockResolvedValue({
 				count: 1,
+				reviewRequiredBy: null,
 				data: [
 					{
 						id: 'req-1',
@@ -1667,6 +1673,7 @@ describe('WorkflowHeaderDraftPublishActions', () => {
 		const seedLatestReview = (overrides: Partial<WorkflowReviewRequestForWorkflow> = {}) => {
 			vi.mocked(fetchWorkflowReviewRequests).mockResolvedValue({
 				count: 1,
+				reviewRequiredBy: null,
 				data: [
 					{
 						id: 'req-1',

@@ -10,6 +10,7 @@ import { useI18n } from '@n8n/i18n';
 import { type ResourceCounts, useProjectsStore } from '../projects.store';
 import { DEFAULT_PROJECT_ICON } from '../projects.constants';
 import type { Project, ProjectRelation, ProjectMemberData } from '../projects.types';
+import { ProjectTypes } from '../projects.types';
 import { useToast } from '@n8n/composables/useToast';
 import { getDebounceTime } from '@n8n/composables/useDebounce';
 import { DEBOUNCE_TIME, MODAL_CANCEL, MODAL_CONFIRM, VIEWS } from '@/app/constants';
@@ -32,6 +33,7 @@ import ProjectSettingsCustomTelemetryTags from '../components/ProjectSettingsCus
 import ProjectWorkerPoolsSection from '../components/ProjectWorkerPoolsSection.vue';
 import { getResourcePermissions } from '@n8n/permissions';
 import { hasPermission } from '@/app/utils/rbac/permissions';
+import { useWorkflowReviewsFeature } from '@/features/workflow-reviews/composables/useWorkflowReviewsFeature';
 
 import {
 	N8nAlert,
@@ -40,6 +42,8 @@ import {
 	N8nIcon,
 	N8nIconPicker,
 	N8nInput,
+	N8nSettingsEnableRow,
+	N8nSettingsRowGroup,
 	N8nText,
 	N8nUserSelect,
 } from '@n8n/design-system';
@@ -62,6 +66,7 @@ const message = useMessage();
 const router = useRouter();
 const telemetry = useTelemetry();
 const documentTitle = useDocumentTitle();
+const { isWorkflowReviewsEnabled, isInstanceApprovalRequired } = useWorkflowReviewsFeature();
 
 const canUpdateProject = computed(
 	() => !!getResourcePermissions(projectsStore.currentProject?.scopes).project.update,
@@ -95,6 +100,7 @@ const formData = ref<
 	Pick<Project, 'name' | 'description' | 'relations'> & {
 		customTelemetryTags: NonNullable<Project['customTelemetryTags']>;
 		defaultPool: string | null;
+		projectApprovalRequired: boolean;
 	}
 >({
 	name: '',
@@ -102,6 +108,7 @@ const formData = ref<
 	relations: [],
 	customTelemetryTags: [],
 	defaultPool: null,
+	projectApprovalRequired: false,
 });
 // Used to skip one watcher sync after targeted server updates (e.g., immediate removal)
 const suppressNextSync = ref(false);
@@ -292,6 +299,7 @@ const resetFormData = () => {
 		: [];
 	telemetryTagsRef.value?.resetTouched();
 	formData.value.defaultPool = projectsStore.currentProjectPoolSettings?.defaultPool ?? null;
+	resetWorkflowReviewFormData();
 };
 
 const hasWorkerPoolsChanges = (): boolean => {
@@ -386,6 +394,14 @@ const updateProject = async () => {
 			}),
 		);
 
+		if (hasWorkflowReviewChanges()) {
+			tasks.push(
+				projectsStore.updateCurrentProjectWorkflowReviewSettings(projectId, {
+					projectApprovalRequired: formData.value.projectApprovalRequired,
+				}),
+			);
+		}
+
 		if (isWorkerPoolsEnabled.value && hasWorkerPoolsChanges()) {
 			tasks.push(
 				projectsStore.updateCurrentProjectPoolSettings(projectId, {
@@ -479,6 +495,39 @@ const resetPoolSettingsFormData = () => {
 	formData.value.defaultPool = projectsStore.currentProjectPoolSettings?.defaultPool ?? null;
 };
 
+const canConfigureWorkflowReviews = computed(
+	() =>
+		canUpdateProject.value &&
+		isWorkflowReviewsEnabled.value &&
+		projectsStore.currentProject?.type === ProjectTypes.Team,
+);
+
+// Hidden until the stored value loads, so a failed load never shows or saves "off".
+const showWorkflowReviewSettings = computed(
+	() =>
+		canConfigureWorkflowReviews.value &&
+		projectsStore.currentProjectWorkflowReviewSettings !== null,
+);
+
+function resetWorkflowReviewFormData() {
+	formData.value.projectApprovalRequired =
+		projectsStore.currentProjectWorkflowReviewSettings?.projectApprovalRequired ?? false;
+}
+
+function hasWorkflowReviewChanges(): boolean {
+	return (
+		showWorkflowReviewSettings.value &&
+		!isInstanceApprovalRequired.value &&
+		formData.value.projectApprovalRequired !==
+			projectsStore.currentProjectWorkflowReviewSettings?.projectApprovalRequired
+	);
+}
+
+const onRequireApprovalUpdate = (value: boolean) => {
+	formData.value.projectApprovalRequired = value;
+	onTextInput();
+};
+
 // Skip one sync after targeted updates (e.g. removal) to preserve unsaved edits.
 // Also the single hook reacting to the project becoming available (it loads asynchronously on a
 // direct page load), so project-scoped data like the pool settings is fetched here too.
@@ -497,6 +546,14 @@ watch(
 		}
 
 		const projectId = projectsStore.currentProjectId;
+		if (projectId && canConfigureWorkflowReviews.value) {
+			void projectsStore
+				.fetchProjectWorkflowReviewSettings(projectId)
+				.catch(() => {
+					// Non-fatal; the store stays cleared, so the setting stays hidden.
+				})
+				.finally(resetWorkflowReviewFormData);
+		}
 		if (canUpdateProject.value && projectId && isWorkerPoolsEnabled.value) {
 			await projectsStore
 				.fetchProjectPoolSettings(projectId)
@@ -903,6 +960,25 @@ onMounted(async () => {
 						}
 					"
 				/>
+				<div v-if="showWorkflowReviewSettings" :class="$style.workflowReviews">
+					<h3>{{ i18n.baseText('projects.settings.workflowReviews.title') }}</h3>
+					<N8nSettingsRowGroup>
+						<N8nSettingsEnableRow
+							:title="i18n.baseText('projects.settings.workflowReviews.requireApproval.title')"
+							:description="
+								isInstanceApprovalRequired
+									? i18n.baseText(
+											'projects.settings.workflowReviews.requireApproval.lockedByInstance',
+										)
+									: i18n.baseText('projects.settings.workflowReviews.requireApproval.description')
+							"
+							:enabled="isInstanceApprovalRequired || formData.projectApprovalRequired"
+							:disabled="isInstanceApprovalRequired"
+							switch-test-id="project-settings-require-approval-switch"
+							@update:enabled="onRequireApprovalUpdate"
+						/>
+					</N8nSettingsRowGroup>
+				</div>
 
 				<fieldset>
 					<h3 class="mb-m">{{ i18n.baseText('projects.settings.danger.title') }}</h3>
@@ -992,6 +1068,16 @@ onMounted(async () => {
 .externalSecrets {
 	max-width: 100%;
 	overflow: hidden;
+}
+
+.workflowReviews {
+	max-width: var(--project-field--width);
+	padding-bottom: var(--spacing--xl);
+
+	h3 {
+		margin-bottom: var(--spacing--xs);
+		font-size: var(--font-size--lg);
+	}
 }
 
 .membersInputRow {

@@ -80,6 +80,8 @@ function makeExecutionStore(
 		findStaleQueuedExecutions: vi.fn(),
 		renewQueuedExecution: vi.fn(),
 		refreshLiveStatus: vi.fn(),
+		findPrunableExecutions: vi.fn(),
+		deleteEndedExecutions: vi.fn(),
 		...storeOverrides,
 	};
 }

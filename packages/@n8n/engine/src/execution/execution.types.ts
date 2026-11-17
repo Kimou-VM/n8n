@@ -23,6 +23,12 @@ export function isLiveExecutionStatus(status: ExecutionStatus): boolean {
 	return (LIVE_EXECUTION_STATUSES as readonly ExecutionStatus[]).includes(status);
 }
 
+export const ENDED_EXECUTION_STATUSES = [
+	'completed',
+	'failed',
+	'cancelled',
+] as const satisfies readonly ExecutionStatus[];
+
 /** How an execution was initiated. */
 export type ExecutionMode = 'production' | 'manual';
 

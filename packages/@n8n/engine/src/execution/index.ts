@@ -33,6 +33,8 @@ export type {
 	ExecutionRecord,
 	ExecutionStore,
 	NewExecutionRecord,
+	PrunableExecution,
+	PrunableExecutionQuery,
 	StaleQueuedExecution,
 } from './execution-store';
 export type {

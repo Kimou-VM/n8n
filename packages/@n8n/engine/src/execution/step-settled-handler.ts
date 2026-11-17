@@ -10,7 +10,7 @@ import type { LifecycleEventPublisherFactory } from '../lifecycle-events';
 import type { ExecutionResponseSender } from '../response-channel';
 import type { OrchestrationMessage, StepMessage, StepSettledEvent, WorkQueue } from '../queue';
 import { countExpectedSettledSteps } from './completion';
-import type { ExecutionRecord, ExecutionStore } from './execution-store';
+import { isMissingExecution, type ExecutionRecord, type ExecutionStore } from './execution-store';
 import {
 	isLiveExecutionStatus,
 	isSettledStatus,
@@ -53,10 +53,23 @@ export class StepSettledHandler {
 	) {}
 
 	async handle(event: StepSettledEvent): Promise<void> {
-		const [step, execution] = await Promise.all([
+		const [stepLoad, executionLoad] = await Promise.allSettled([
 			this.stepStore.loadStep(event.stepId),
 			this.executionStore.loadExecution(event.executionId),
 		]);
+		// Test the execution first: its deletion also deletes the step row.
+		// A step of another execution means a wrong message, which must still fail.
+		if (executionLoad.status === 'rejected') {
+			const stepOfOtherExecution =
+				stepLoad.status === 'fulfilled' && stepLoad.value.executionId !== event.executionId;
+			if (isMissingExecution(executionLoad.reason, event.executionId) && !stepOfOtherExecution) {
+				return;
+			}
+			throw executionLoad.reason;
+		}
+		if (stepLoad.status === 'rejected') throw stepLoad.reason;
+		const step = stepLoad.value;
+		const execution = executionLoad.value;
 		const node = validateStepContext(step, execution);
 
 		// v1 parity: an error that escapes a node ends the whole execution, not

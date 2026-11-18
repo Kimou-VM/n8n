@@ -1713,9 +1713,10 @@ export interface InstanceAiStoredFile {
 	readContent(): Promise<Buffer | undefined>;
 }
 
-export interface InstanceAiSandboxFileImport {
+/** The sandbox files feature of the host: conversation files in and out of the sandbox. */
+export interface InstanceAiSandboxFiles {
 	/** Most bytes that one `import-files` call copies, for all files together. */
-	maxBytes: number;
+	maxImportBytes: number;
 }
 
 export interface InstanceAiStoredFileReader {
@@ -1927,10 +1928,10 @@ export interface InstanceAiContext {
 	 */
 	storedFiles?: InstanceAiStoredFileReader;
 	/**
-	 * Lets `import-files` copy stored files into the sandbox. The host sets it
-	 * only when the sandbox files feature is on, so its presence is the gate.
+	 * Moves conversation files in and out of the sandbox. The host sets it only
+	 * when the sandbox files feature is on, so its presence is the gate.
 	 */
-	sandboxFileImport?: InstanceAiSandboxFileImport;
+	sandboxFiles?: InstanceAiSandboxFiles;
 	/** Logger for diagnostics from domain tools. */
 	logger: Logger;
 	/** Optional telemetry sink for domain tools. */

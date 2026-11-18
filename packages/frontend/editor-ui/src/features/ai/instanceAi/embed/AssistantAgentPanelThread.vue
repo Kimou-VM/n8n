@@ -28,6 +28,7 @@ import {
 } from '../assistantAgent/assistantAgentThreads';
 import { useAssistantAgentThreadsStore } from '../assistantAgent/assistantAgentThreads.store';
 import { assistantConfirmationExtension } from '../assistantAgent/assistantConfirmation';
+import { assistantSharedFilesExtension } from '../assistantAgent/assistantSharedFiles';
 import {
 	useAssistantAgentMessageTelemetry,
 	type AssistantAgentSendingMessage,
@@ -236,7 +237,7 @@ watch(
 	{ immediate: true },
 );
 
-const interactionExtensions = [assistantConfirmationExtension];
+const interactionExtensions = [assistantConfirmationExtension, assistantSharedFilesExtension];
 
 defineExpose({
 	focus: () => panel.value?.focusInput(),

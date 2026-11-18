@@ -4,6 +4,7 @@ import { createComponentRenderer } from '@n8n/frontend-test-utils';
 import type { Scope } from '@n8n/permissions';
 import { useRBACStore } from '@n8n/stores/rbac.store';
 import { useSettingsStore } from '@n8n/stores/settings.store';
+import { createDeferredPromise } from '@n8n/utils/promise/deferred-promise';
 import { createTestingPinia } from '@pinia/testing';
 import { fireEvent, waitFor, within } from '@testing-library/vue';
 import type { INodeTypeDescription } from 'n8n-workflow';
@@ -37,7 +38,6 @@ vi.mock('@n8n/design-system', async (importOriginal) => {
 			props: ['open', 'header'],
 			template: '<div v-if="open"><h2>{{ header }}</h2><slot /></div>',
 		},
-		N8nDialogDescription: { name: 'N8nDialogDescription', template: '<p><slot /></p>' },
 	};
 });
 
@@ -256,6 +256,9 @@ describe('CredentialTypeAccessDialog', () => {
 			defaultAction: 'allow',
 			version: 1,
 		});
+		// Lets the save and its access read end, so that a later save of the credential type would show.
+		await new Promise((resolve) => setTimeout(resolve));
+		expect(mocks.saveInstancePolicy).toHaveBeenCalledTimes(1);
 		expect(
 			within(getByTestId('credential-type-access-credential')).getByTestId('type-access-select'),
 		).toHaveAttribute('data-value', 'allow');
@@ -270,13 +273,20 @@ describe('CredentialTypeAccessDialog', () => {
 		expect(selectsIn(getByTestId('credential-type-access-related-credential'))).toHaveLength(2);
 	});
 
-	it('shows an error and the saved access again when a save fails', async () => {
-		mocks.saveInstancePolicy.mockRejectedValue(new Error('offline'));
+	it('shows the chosen access while the save runs, then an error and the saved access when it fails', async () => {
+		const save = createDeferredPromise<unknown>();
+		mocks.saveInstancePolicy.mockReturnValueOnce(save.promise);
 		const { getByTestId } = await setup('airtableApi');
 		const credentialSelect = () =>
 			within(getByTestId('credential-type-access-credential')).getByTestId('type-access-select');
 
 		await fireEvent.click(credentialSelect());
+		await waitFor(() => expect(mocks.saveInstancePolicy).toHaveBeenCalledTimes(1));
+
+		expect(credentialSelect()).toHaveAttribute('data-value', 'deny');
+		expect(useInstancePolicyStore().typeAccess.credential?.byName.get('airtableApi')).toBe('allow');
+
+		save.reject(new Error('offline'));
 
 		await waitFor(() =>
 			expect(toast.showError).toHaveBeenCalledWith(expect.any(Error), 'Could not save the policy'),
@@ -295,6 +305,44 @@ describe('CredentialTypeAccessDialog', () => {
 			expect(toast.showError).toHaveBeenCalledWith(expect.any(Error), 'Could not save the policy'),
 		);
 		await waitFor(() => expect(airtableSelect()).toHaveAttribute('data-value', 'allow'));
+	});
+
+	it('keeps showing a later choice when the save of an earlier choice ends', async () => {
+		const firstSave = createDeferredPromise<unknown>();
+		const secondSave = createDeferredPromise<unknown>();
+		mocks.saveInstancePolicy
+			.mockReturnValueOnce(firstSave.promise)
+			.mockReturnValueOnce(secondSave.promise);
+		const { getByTestId } = await setup('airtableApi');
+		// The server reads the type as restricted after the first save.
+		mocks.fetchInstanceTypeAccess.mockImplementation(async (_context, kind: string) =>
+			kind === 'node'
+				? access(NODE_ACCESS)
+				: access({ ...CREDENTIAL_ACCESS, airtableApi: 'deny' }, 2),
+		);
+		const credentialSelect = () =>
+			within(getByTestId('credential-type-access-credential')).getByTestId('type-access-select');
+
+		// Restricts the type, then allows it again while the first save runs.
+		await fireEvent.click(credentialSelect());
+		await fireEvent.click(credentialSelect());
+		firstSave.resolve({
+			scopeId: null,
+			rules: [],
+			defaultAction: 'allow',
+			version: 2,
+			warnings: [],
+		});
+		await waitFor(() => expect(mocks.saveInstancePolicy).toHaveBeenCalledTimes(2));
+		await waitFor(() =>
+			expect(useInstancePolicyStore().typeAccess.credential?.byName.get('airtableApi')).toBe(
+				'deny',
+			),
+		);
+		// Lets the first change end, so that the check below sees what its end leaves.
+		await new Promise((resolve) => setTimeout(resolve));
+
+		expect(credentialSelect()).toHaveAttribute('data-value', 'allow');
 	});
 
 	it('does not let the admin change a type that a rule leaves open to project opt-in', async () => {
@@ -337,5 +385,17 @@ describe('CredentialTypeAccessDialog', () => {
 		expect(getByTestId('credential-type-access-credential')).toBeInTheDocument();
 		expect(queryByText('Possibly related nodes and credentials')).not.toBeInTheDocument();
 		expect(queryByTestId('credential-type-access-empty')).not.toBeInTheDocument();
+	});
+
+	it('reads the access again when it opens after an earlier read failed', async () => {
+		mocks.fetchInstanceTypeAccess.mockRejectedValueOnce(new Error('offline'));
+		const { getByTestId } = await setup('airtableApi', ['credentialTypePolicy:manage']);
+
+		await waitFor(() =>
+			expect(
+				within(getByTestId('credential-type-access-credential')).getByTestId('type-access-select'),
+			).toHaveAttribute('data-value', 'allow'),
+		);
+		expect(mocks.fetchInstanceTypeAccess).toHaveBeenCalledTimes(2);
 	});
 });

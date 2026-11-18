@@ -222,7 +222,10 @@ describe('CredentialTypesTab', () => {
 		await setup();
 
 		await waitFor(() =>
-			expect(mocks.showError).toHaveBeenCalledWith(expect.any(Error), 'Could not load the policy'),
+			expect(mocks.showError).toHaveBeenCalledWith(
+				expect.any(Error),
+				'Could not load the access of the types',
+			),
 		);
 	});
 

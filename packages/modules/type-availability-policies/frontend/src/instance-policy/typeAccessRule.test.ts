@@ -153,6 +153,32 @@ describe('withTypeAccess', () => {
 		expect(result.rules.map(({ selector }) => selector.value)).toEqual(['fooApi', 'fooApiTool']);
 	});
 
+	it('keeps an extends rule with the value of the credential type, and the rules of other types', () => {
+		const denyNotion = {
+			id: 'deny-notion',
+			action: 'deny',
+			selector: { kind: 'name', value: 'notionApi' },
+		} as const;
+		const denyExtendsBitly = {
+			id: 'deny-extends-bitly',
+			action: 'deny',
+			selector: { kind: 'extends', value: 'bitlyApi' },
+		} as const;
+
+		const result = withTypeAccess(
+			'credential',
+			{ rules: [denyNotion, denyExtendsBitly], defaultAction: 'allow' },
+			'bitlyApi',
+			'allow',
+		);
+
+		expect(result.rules).toEqual([
+			{ id: expect.any(String), action: 'allow', selector: { kind: 'name', value: 'bitlyApi' } },
+			denyNotion,
+			denyExtendsBitly,
+		]);
+	});
+
 	it('keeps both deciding variant rules above the new base rule, in their order', () => {
 		const denySlackHitlTool = {
 			id: 'deny-slack-hitl-tool',

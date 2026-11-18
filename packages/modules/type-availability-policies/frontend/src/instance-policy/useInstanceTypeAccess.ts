@@ -72,7 +72,10 @@ export function useInstanceTypeAccess<K extends RestrictedTypeKind>(
 			}
 		} catch (error) {
 			if (isLatest()) {
-				toast.showError(error, i18n.baseText('typeAvailabilityPolicies.instancePolicy.loadError'));
+				toast.showError(
+					error,
+					i18n.baseText('typeAvailabilityPolicies.instancePolicy.accessLoadError'),
+				);
 			}
 		} finally {
 			if (isLatest()) loadingAccess.value = false;

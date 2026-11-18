@@ -76,6 +76,45 @@ describe('useInstancePolicyStore', () => {
 			expect(store.typeAccess.credential).toBeNull();
 		});
 
+		it('reads the access of the credential policy for its own version', async () => {
+			mocks.fetchInstanceTypeAccess.mockImplementation(async (_context, kind: string) =>
+				kind === 'node'
+					? accessResponse(3)
+					: {
+							scopeId: 'scope-credential',
+							version: 7,
+							defaultAction: 'allow' as const,
+							types: [{ name: 'slackApi', access: 'deny', matchedRuleId: null }],
+						},
+			);
+			const store = useInstancePolicyStore();
+
+			await store.load(['node', 'credential']);
+
+			expect(store.typeAccess.credential?.version).toBe(7);
+			expect(store.typeAccess.credential?.byName.get('slackApi')).toBe('deny');
+			expect(store.typeAccess.node?.byName.has('slackApi')).toBe(false);
+		});
+
+		it('reads the access again on each load, so it lists the types installed since', async () => {
+			const store = useInstancePolicyStore();
+			await store.load(['node']);
+			const installed = {
+				name: 'n8n-nodes-acme.acme',
+				access: 'deny' as const,
+				matchedRuleId: null,
+			};
+			mocks.fetchInstanceTypeAccess.mockResolvedValue({
+				...accessResponse(3),
+				types: [...accessResponse(3).types, installed],
+			});
+
+			await store.load(['node']);
+
+			expect(mocks.fetchInstanceTypeAccess).toHaveBeenCalledTimes(2);
+			expect(store.typeAccess.node?.byName.get('n8n-nodes-acme.acme')).toBe('deny');
+		});
+
 		it('marks the types that a rule leaves open to project opt-in as locked', async () => {
 			mocks.fetchInstanceTypeAccess.mockResolvedValue({
 				...accessResponse(3),
@@ -179,6 +218,24 @@ describe('useInstancePolicyStore', () => {
 			expect(store.policies.node?.version).toBe(5);
 			expect(store.typeAccess.node?.version).toBe(5);
 			expect(store.typeAccess.node?.byName.get('n8n-nodes-base.slack')).toBe('deny');
+		});
+
+		it('reports no read error for a save when a later save already read the current access', async () => {
+			const store = useInstancePolicyStore();
+			await store.load(['node']);
+			const firstRead = createDeferredPromise<ReturnType<typeof accessResponse>>();
+			mocks.fetchInstanceTypeAccess.mockReturnValueOnce(firstRead.promise);
+			mocks.fetchInstanceTypeAccess.mockResolvedValue(accessResponse(5, 'deny'));
+			mocks.saveInstancePolicy
+				.mockResolvedValueOnce({ ...nodePolicy(4, [DENY_SLACK]), warnings: [] })
+				.mockResolvedValueOnce({ ...nodePolicy(5, [DENY_SLACK]), warnings: [] });
+
+			const first = store.save('node', addDenySlack);
+			await store.save('node', (policy) => policy);
+			firstRead.reject(new Error('offline'));
+
+			expect(await first).toEqual({ status: 'saved', warnings: [] });
+			expect(store.typeAccess.node?.version).toBe(5);
 		});
 
 		it('keeps no access when an older read ends after a newer read failed', async () => {
@@ -294,6 +351,21 @@ describe('useInstancePolicyStore', () => {
 			expect(await olderLoad).toEqual({ errors: [], accessErrors: [] });
 			expect(store.loadStates.node).toBe('loaded');
 			expect(store.policies.node).toEqual(nodePolicy(3));
+		});
+
+		it('drops the access read error of an older load when a newer load read the access', async () => {
+			const olderRead = createDeferredPromise<ReturnType<typeof accessResponse>>();
+			mocks.fetchInstanceTypeAccess.mockReturnValueOnce(olderRead.promise);
+			const store = useInstancePolicyStore();
+			const olderLoad = store.load(['node']);
+			await vi.waitFor(() => expect(mocks.fetchInstanceTypeAccess).toHaveBeenCalledTimes(1));
+
+			const newerLoad = await store.load(['node']);
+			olderRead.reject(new Error('offline'));
+
+			expect(await olderLoad).toEqual({ errors: [], accessErrors: [] });
+			expect(newerLoad).toEqual({ errors: [], accessErrors: [] });
+			expect(store.typeAccess.node?.version).toBe(3);
 		});
 
 		it('does not reload the builder restrictions on the first load', async () => {

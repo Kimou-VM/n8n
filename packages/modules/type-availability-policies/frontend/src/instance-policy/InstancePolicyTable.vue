@@ -249,8 +249,8 @@ function onAccessChange(row: InstancePolicyTableRow, access: PolicyAction) {
 					:data-test-id="`instance-policy-open-${item.name}`"
 					@click.stop="emit('open', item.name)"
 				>
-					<N8nNodeIcon v-bind="item.icon" :size="20" />
-					<N8nText color="text-dark" bold>{{ item.displayName }}</N8nText>
+					<N8nNodeIcon v-bind="item.icon" :size="20" :class="$style.nameIcon" />
+					<N8nText color="text-dark" bold :class="$style.nameText">{{ item.displayName }}</N8nText>
 				</button>
 			</template>
 			<template #[`item.access`]="{ item }">
@@ -340,8 +340,11 @@ function onAccessChange(row: InstancePolicyTableRow, access: PolicyAction) {
 }
 
 .name {
-	padding: 0;
+	/* The cell clips a wider button, and the focus ring with it, so a long name truncates instead. */
+	max-width: 100%;
+	padding: var(--spacing--5xs);
 	border: none;
+	border-radius: var(--radius);
 	background: none;
 	font: inherit;
 	text-align: start;
@@ -349,7 +352,19 @@ function onAccessChange(row: InstancePolicyTableRow, access: PolicyAction) {
 
 	&:focus-visible {
 		@include focus.focus-ring;
+		/* The table cell clips what lies outside the button, so the ring sits inside the padding. */
+		outline-offset: calc(-1 * var(--focus--border-width));
 	}
+}
+
+.nameIcon {
+	flex-shrink: 0;
+}
+
+.nameText {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .footer {

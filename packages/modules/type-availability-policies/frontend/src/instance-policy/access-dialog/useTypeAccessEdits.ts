@@ -11,8 +11,8 @@ export function useTypeAccessEdits() {
 	const instancePolicy = useInstancePolicy();
 
 	// Shows the chosen access while its save runs. The store holds the access that the server read.
-	// Each change gets its own token, so an earlier save that ends does not clear a later choice.
-	const pending = shallowReactive(new Map<string, { action: PolicyAction; token: symbol }>());
+	// Each change owns its entry, so an earlier save that ends does not clear a later choice.
+	const pending = shallowReactive(new Map<string, { action: PolicyAction }>());
 	const keyOf = (kind: RestrictedTypeKind, name: string) => `${kind}:${name}`;
 
 	function accessOf(kind: RestrictedTypeKind, name: string): PolicyAction | undefined {
@@ -28,12 +28,12 @@ export function useTypeAccessEdits() {
 
 	async function setAccess(kind: RestrictedTypeKind, name: string, action: PolicyAction) {
 		const key = keyOf(kind, name);
-		const token = Symbol(key);
-		pending.set(key, { action, token });
+		const change = { action };
+		pending.set(key, change);
 		try {
 			await instancePolicy.setAccess(kind, name, action);
 		} finally {
-			if (pending.get(key)?.token === token) pending.delete(key);
+			if (pending.get(key) === change) pending.delete(key);
 		}
 	}
 

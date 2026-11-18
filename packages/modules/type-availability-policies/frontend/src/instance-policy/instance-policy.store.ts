@@ -134,19 +134,24 @@ export const useInstancePolicyStore = defineStore(INSTANCE_POLICY_STORE_ID, () =
 	async function syncTypeAccess(kind: RestrictedTypeKind): Promise<unknown> {
 		const current = policies[kind];
 		if (!current || typeAccess[kind]?.version === current.version) return null;
-		return await loadTypeAccess(kind);
+		const error = await loadTypeAccess(kind);
+		// A later read, for example the read after a later save, can store the current access first.
+		return typeAccess[kind]?.version === policies[kind]?.version ? null : error;
 	}
 
 	async function loadKind<K extends RestrictedTypeKind>(kind: K): Promise<LoadKindResult> {
-		// Only the latest load of a kind sets its state, so an older load that fails late does not
-		// mark a newer loaded policy as failed.
+		// Only the latest load of a kind sets its state and reports errors, so an older load that ends
+		// late does not mark a newer loaded policy as failed or show an outdated error.
 		const request = ++loadRequests[kind];
 		loadStates[kind] = 'loading';
 		try {
 			const policy = await fetchInstancePolicy(rootStore.restApiContext, kind);
 			accept(kind, policy);
-			const accessError = await syncTypeAccess(kind);
-			if (request === loadRequests[kind]) loadStates[kind] = 'loaded';
+			// The server lists the installed types, which can change while the policy version stays.
+			const accessError = await loadTypeAccess(kind);
+			if (request !== loadRequests[kind]) return { error: null, accessError: null };
+
+			loadStates[kind] = 'loaded';
 			return { error: null, accessError };
 		} catch (error) {
 			if (request !== loadRequests[kind]) return { error: null, accessError: null };

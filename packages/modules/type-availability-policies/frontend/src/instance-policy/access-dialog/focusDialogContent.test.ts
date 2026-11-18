@@ -10,8 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CredentialTypeAccessDialog from './CredentialTypeAccessDialog.vue';
 import { useInstancePolicyStore } from '../instance-policy.store';
 
-// The real dialog, unlike the dialog tests, so that its focus on open runs. In jsdom the node
-// dialog ends with the same focus without the fix, so only the credential dialog is checked here.
+// The real dialog, unlike the dialog tests, so that its focus on open runs.
 
 const mocks = vi.hoisted(() => ({
 	fetchInstancePolicy: vi.fn(),

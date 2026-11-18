@@ -2131,6 +2131,8 @@ onBeforeUnmount(() => {
 								@click.stop="chatInput?.openFilePicker()"
 							/>
 						</N8nTooltip>
+						<!-- Before the files toggle: a host menu such as the Assistant "+" menu replaces the attach button. -->
+						<slot name="footer-start" :disabled="isComposerBlocked" />
 						<N8nTooltip
 							v-if="showSessionFilesToggle"
 							:content="locale.baseText('agents.chat.sessionFiles.title')"
@@ -2146,7 +2148,6 @@ onBeforeUnmount(() => {
 								@click.stop="toggleSessionFiles"
 							/>
 						</N8nTooltip>
-						<slot name="footer-start" :disabled="isComposerBlocked" />
 					</template>
 					<template v-if="$slots['composer-actions']" #right-actions>
 						<slot name="composer-actions" />

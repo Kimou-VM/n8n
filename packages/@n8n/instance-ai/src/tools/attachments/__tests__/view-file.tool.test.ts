@@ -64,7 +64,11 @@ describe('createViewFileTool', () => {
 
 	it.each([
 		['a file of another thread', null, 'not found in this conversation'],
-		['a file type the model cannot see', storedFile({ mimeType: 'text/csv' }), 'parse-file'],
+		[
+			'a file type the model cannot see',
+			storedFile({ mimeType: 'text/csv' }),
+			'Cannot view files of type "text/csv"',
+		],
 		[
 			'a file over the attachment cap',
 			storedFile({ sizeBytes: MAX_AGENT_CHAT_ATTACHMENT_SIZE_BYTES + 1 }),

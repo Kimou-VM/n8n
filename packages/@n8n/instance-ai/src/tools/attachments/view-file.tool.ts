@@ -50,7 +50,7 @@ const DESCRIPTION =
 	'or a file that `share-files` returned. The file is attached for you to see. ' +
 	'Use it to check an image that you made before you describe it, or to look again at a file of an earlier turn ' +
 	'that is no longer attached. Do not view a file that is already attached in the conversation. ' +
-	'For other file types, use `parse-file`.';
+	'It shows only PNG, JPEG, GIF, WebP and PDF files.';
 
 const MAX_MB = MAX_AGENT_CHAT_ATTACHMENT_SIZE_BYTES / 1024 / 1024;
 
@@ -66,7 +66,7 @@ export function createViewFileTool(storedFiles: InstanceAiStoredFileReader) {
 			if (!file) return { error: `File "${fileId}" not found in this conversation` };
 			if (!VIEWABLE_MIME_TYPES.has(file.mimeType)) {
 				return {
-					error: `Cannot view files of type "${file.mimeType}". Use parse-file, or view a PNG, JPEG, GIF, WebP or PDF file`,
+					error: `Cannot view files of type "${file.mimeType}". This tool shows only PNG, JPEG, GIF, WebP and PDF files`,
 				};
 			}
 			// A viewed file stays attached, so a file that is too large makes every later model call fail.

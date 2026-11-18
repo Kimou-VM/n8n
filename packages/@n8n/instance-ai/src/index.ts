@@ -869,6 +869,7 @@ export type {
 	InstanceAiAgentContextReader,
 	InstanceAiConversationFile,
 	InstanceAiSandboxFiles,
+	InstanceAiSkippedFile,
 	InstanceAiStoredFile,
 	InstanceAiStoredFileReader,
 	InstanceAiSkillService,

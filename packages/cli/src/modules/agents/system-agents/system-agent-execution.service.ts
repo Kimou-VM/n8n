@@ -21,9 +21,11 @@ import { AgentExecutionService, type StartExecutionParams } from '../agent-execu
 import { AgentFormattedTurnError } from '../agent-formatted-turn.error';
 import type { ClaimedAgentMessage } from '../agent-message-queue.service';
 import { AgentMessageQueueService } from '../agent-message-queue.service';
+import { AgentFileBridge, attachmentToBinaryData } from '../agent-file-bridge.service';
 import { AgentSandboxFilesService } from '../agent-sandbox-files.service';
 import { chatErrorCode, emitChunkEvents } from '../agent-sse-stream';
 import { AgentTurnExecutionService, type AgentTurnRequest } from '../agent-turn-execution.service';
+import type { AgentChatAttachment } from '../entities/agent-chat-attachment.entity';
 import type { AgentExecutionThread } from '../entities/agent-execution-thread.entity';
 import { N8NCheckpointStorage } from '../integrations/n8n-checkpoint-storage';
 import { N8nMemory } from '../integrations/n8n-memory';
@@ -46,6 +48,7 @@ import {
 	SANDBOX_FILE_SOURCE,
 	SYSTEM_CHAT_FILE_SOURCES,
 	SYSTEM_CHAT_SOURCE,
+	TOOL_FILE_SOURCE,
 } from '../utils/agent-thread-access';
 import { canUseSystemAgent } from './system-agent-access';
 import { SystemAgentHostEventChannel } from './system-agent-host-events';
@@ -150,6 +153,7 @@ export class SystemAgentExecutionService {
 		private readonly n8nMemory: N8nMemory,
 		private readonly threadGrants: AgentThreadGrantRepository,
 		private readonly sandboxFiles: AgentSandboxFilesService,
+		private readonly fileBridge: AgentFileBridge,
 	) {}
 
 	resourceIdFor(user: Pick<User, 'id'>): string {
@@ -671,7 +675,7 @@ export class SystemAgentExecutionService {
 						...(workspace ? { workspace: workspace.lease } : {}),
 						...this.turnStateOf(thread),
 						emitHostEvent: hostEvents.emit,
-						readFile: async (fileId) => await this.readThreadFile(thread, resourceId, fileId),
+						...this.threadFilesOf(thread, resourceId),
 						...(await this.sandboxFilesOf(thread, resourceId)),
 						executionId: admission.executionId,
 						message: payload.message,
@@ -769,7 +773,7 @@ export class SystemAgentExecutionService {
 					...(workspace ? { workspace: workspace.lease } : {}),
 					...this.turnStateOf(thread),
 					emitHostEvent: hostEvents.emit,
-					readFile: async (fileId) => await this.readThreadFile(thread, resourceId, fileId),
+					...this.threadFilesOf(thread, resourceId),
 					...(await this.sandboxFilesOf(thread, resourceId)),
 					runId,
 					toolCallId: pending.toolCallId,
@@ -1006,9 +1010,53 @@ export class SystemAgentExecutionService {
 			fileName: file.fileName,
 			mimeType: file.mimeType,
 			sizeBytes: file.sizeBytes,
-			origin: file.source === SANDBOX_FILE_SOURCE ? 'sandbox' : 'upload',
+			origin:
+				file.source === SANDBOX_FILE_SOURCE
+					? 'sandbox'
+					: file.source === TOOL_FILE_SOURCE
+						? 'workflow'
+						: 'upload',
 			createdAt: file.createdAt,
 		}));
+	}
+
+	/** The file reads and writes of a turn, in the system chat of the thread's owner. */
+	private threadFilesOf(
+		thread: AgentExecutionThread,
+		resourceId: string,
+	): Pick<SystemAgentStartTurn, 'readFile' | 'readFileBinary' | 'storeWorkflowFile'> {
+		return {
+			readFile: async (fileId) => await this.readThreadFile(thread, resourceId, fileId),
+			readFileBinary: async (fileId) => {
+				const attachment = await this.findThreadFile(thread, resourceId, fileId);
+				// Storage can prune the bytes while the attachment row stays.
+				if (!attachment || !(await this.attachmentService.hasStoredData(attachment))) {
+					return undefined;
+				}
+				return attachmentToBinaryData(attachment);
+			},
+			storeWorkflowFile: async (binary) =>
+				await this.fileBridge.adoptBinary(binary, {
+					agentId: thread.agentId,
+					projectId: thread.projectId,
+					threadId: thread.id,
+					// The reads and the downloads of the system chat find its files by resource.
+					resourceId,
+				}),
+		};
+	}
+
+	private async findThreadFile(
+		thread: AgentExecutionThread,
+		resourceId: string,
+		fileId: string,
+	): Promise<AgentChatAttachment | undefined> {
+		const attachment = await this.attachmentService.getForSystemAgent(fileId, {
+			agentId: thread.agentId,
+			resourceId,
+			sources: SYSTEM_CHAT_FILE_SOURCES,
+		});
+		return attachment?.threadId === thread.id ? attachment : undefined;
 	}
 
 	private async readThreadFile(
@@ -1016,12 +1064,8 @@ export class SystemAgentExecutionService {
 		resourceId: string,
 		fileId: string,
 	): Promise<SystemAgentFile | undefined> {
-		const attachment = await this.attachmentService.getForSystemAgent(fileId, {
-			agentId: thread.agentId,
-			resourceId,
-			sources: SYSTEM_CHAT_FILE_SOURCES,
-		});
-		if (attachment?.threadId !== thread.id) return undefined;
+		const attachment = await this.findThreadFile(thread, resourceId, fileId);
+		if (!attachment) return undefined;
 		// The bytes load only on request, so a caller can check the size first.
 		return {
 			fileName: attachment.fileName,

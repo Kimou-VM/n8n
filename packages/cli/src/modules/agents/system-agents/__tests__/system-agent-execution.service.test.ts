@@ -16,6 +16,7 @@ import type { AgentChatExecutionService } from '../../agent-chat-execution.servi
 import { AgentConversationStateService } from '../../agent-conversation-state.service';
 import { AgentFormattedTurnError } from '../../agent-formatted-turn.error';
 import type { AgentExecutionService } from '../../agent-execution.service';
+import type { AgentFileBridge } from '../../agent-file-bridge.service';
 import type { AgentSandboxFilesService } from '../../agent-sandbox-files.service';
 import { toChatErrorEvent } from '../../agent-sse-stream';
 import { AgentTurnAlreadyRunningError } from '../../agent-turn-already-running.error';
@@ -119,6 +120,7 @@ function setup(
 	const threadGrants = mock<AgentThreadGrantRepository>();
 	const sandboxFiles = mock<AgentSandboxFilesService>({ maxImportBytes: 200 * 1024 * 1024 });
 	sandboxFiles.isEnabled.mockResolvedValue(false);
+	const fileBridge = mock<AgentFileBridge>();
 
 	const onChunk = vi.fn();
 	const onSettled = vi.fn(async () => {});
@@ -175,6 +177,7 @@ function setup(
 		n8nMemory,
 		threadGrants,
 		sandboxFiles,
+		fileBridge,
 	);
 
 	return {
@@ -200,6 +203,7 @@ function setup(
 		agentCheckpointStore,
 		threadGrants,
 		sandboxFiles,
+		fileBridge,
 	};
 }
 
@@ -819,7 +823,7 @@ describe('SystemAgentExecutionService', () => {
 				expect(attachmentService.getForSystemAgent).toHaveBeenCalledWith('att-1', {
 					agentId: AGENT_ID,
 					resourceId: 'system-chat:user-1',
-					sources: ['system_chat', 'sandbox'],
+					sources: ['system_chat', 'sandbox', 'tool'],
 				});
 			});
 
@@ -885,7 +889,7 @@ describe('SystemAgentExecutionService', () => {
 				expect(attachmentService.getForSystemAgent).toHaveBeenCalledWith('att-earlier', {
 					agentId: AGENT_ID,
 					resourceId: 'system-chat:user-1',
-					sources: ['system_chat', 'sandbox'],
+					sources: ['system_chat', 'sandbox', 'tool'],
 				});
 			});
 
@@ -902,17 +906,77 @@ describe('SystemAgentExecutionService', () => {
 				};
 				attachmentService.listForSystemAgentThread.mockResolvedValue([
 					{ ...file, fileId: 'out-1', source: 'sandbox' },
+					{ ...file, fileId: 'run-1', source: 'tool' },
 					{ ...file, fileId: 'up-1', source: 'system_chat' },
 				]);
 
 				await expect(turnFiles?.listFiles()).resolves.toEqual([
 					{ ...file, fileId: 'out-1', origin: 'sandbox' },
+					{ ...file, fileId: 'run-1', origin: 'workflow' },
 					{ ...file, fileId: 'up-1', origin: 'upload' },
 				]);
 				expect(attachmentService.listForSystemAgentThread).toHaveBeenCalledWith('thread-1', {
 					agentId: AGENT_ID,
 					resourceId: 'system-chat:user-1',
-					sources: ['system_chat', 'sandbox'],
+					sources: ['system_chat', 'sandbox', 'tool'],
+				});
+			});
+
+			it('gives a file of the thread as binary data that points to the stored bytes', async () => {
+				const { turn, attachmentService } = await startTurnWithAttachment();
+				attachmentService.getForSystemAgent.mockResolvedValue({
+					id: 'att-1',
+					threadId: 'thread-1',
+					binaryDataId: 'filesystem-v2:agents/att-1',
+					fileName: 'outputs/hat.png',
+					mimeType: 'image/png',
+					fileSizeBytes: 3,
+				} as never);
+				attachmentService.hasStoredData.mockResolvedValue(true);
+
+				await expect(turn.readFileBinary('att-1')).resolves.toEqual({
+					id: 'filesystem-v2:agents/att-1',
+					data: 'filesystem-v2',
+					mimeType: 'image/png',
+					fileName: 'hat.png',
+					fileExtension: 'png',
+					bytes: 3,
+				});
+				expect(attachmentService.getForSystemAgent).toHaveBeenCalledWith('att-1', {
+					agentId: AGENT_ID,
+					resourceId: 'system-chat:user-1',
+					sources: ['system_chat', 'sandbox', 'tool'],
+				});
+			});
+
+			it('gives no binary data for a file of another thread or a file whose bytes are gone', async () => {
+				const { turn, attachmentService } = await startTurnWithAttachment();
+				attachmentService.getForSystemAgent.mockResolvedValueOnce({
+					id: 'att-1',
+					threadId: 'thread-2',
+				} as never);
+				await expect(turn.readFileBinary('att-1')).resolves.toBeUndefined();
+
+				attachmentService.getForSystemAgent.mockResolvedValueOnce({
+					id: 'att-1',
+					threadId: 'thread-1',
+				} as never);
+				attachmentService.hasStoredData.mockResolvedValue(false);
+				await expect(turn.readFileBinary('att-1')).resolves.toBeUndefined();
+			});
+
+			it('stores a workflow output file in the system chat of the user', async () => {
+				const { turn, fileBridge } = await startTurnWithAttachment();
+				const binary = { id: 'filesystem-v2:run/1', data: 'filesystem-v2', mimeType: 'image/png' };
+				const stored = { fileId: 'f-1', fileName: 'a.png', mimeType: 'image/png', sizeBytes: 3 };
+				fileBridge.adoptBinary.mockResolvedValue(stored);
+
+				await expect(turn.storeWorkflowFile(binary)).resolves.toBe(stored);
+				expect(fileBridge.adoptBinary).toHaveBeenCalledWith(binary, {
+					agentId: thread.agentId,
+					projectId: thread.projectId,
+					threadId: 'thread-1',
+					resourceId: 'system-chat:user-1',
 				});
 			});
 

@@ -322,6 +322,9 @@ export class AssistantAgentProvider implements SystemAgentProvider<AssistantSand
 		const { sandboxFiles } = turn;
 		environment.context.storedFiles = {
 			read: async (fileId) => await turn.readFile(fileId),
+			// Workflow runs take conversation files and return their files, as the workflow tools of project agents do.
+			readBinary: async (fileId) => await turn.readFileBinary(fileId),
+			storeWorkflowFile: async (binary) => await turn.storeWorkflowFile(binary),
 			// The files list of the chat has the same flag.
 			...(sandboxFiles ? { list: async () => await sandboxFiles.listFiles() } : {}),
 		};

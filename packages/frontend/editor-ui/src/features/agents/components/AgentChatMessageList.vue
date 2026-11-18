@@ -109,6 +109,8 @@ defineSlots<{
 	status?: () => unknown;
 	/** Host actions for a finished agent reply, next to the default copy action. */
 	'message-actions'?: (props: { message: ChatMessage; executionId?: string }) => unknown;
+	/** The `references` of a user message, for example mentioned workflows. */
+	'user-message-references'?: (props: { message: ChatMessage }) => unknown;
 }>();
 
 const i18n = useI18n();
@@ -1157,6 +1159,17 @@ watch(
 							</div>
 						</template>
 					</template>
+					<div
+						v-if="
+							group.message.role === CHAT_MESSAGE_ROLE.USER &&
+							group.message.references?.length &&
+							$slots['user-message-references']
+						"
+						:class="$style.references"
+						data-testid="agent-chat-message-references"
+					>
+						<slot name="user-message-references" :message="group.message" />
+					</div>
 					<AgentBudgetNoticeCard
 						v-for="notice in group.message.budgetNotices ?? []"
 						:key="notice.id"
@@ -1426,6 +1439,16 @@ watch(
 
 .author {
 	padding: 0 var(--spacing--sm) var(--spacing--4xs);
+}
+
+.references {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--spacing--2xs);
+
+	.chatMessage + & {
+		margin-top: var(--spacing--2xs);
+	}
 }
 
 .chatMessageError {

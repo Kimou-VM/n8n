@@ -172,6 +172,7 @@ describe('InstanceAiConversation', () => {
 				workflow: 1,
 				node: 0,
 				group: 0,
+				agent: 0,
 			},
 			['wf-1'],
 		);
@@ -350,6 +351,7 @@ describe('InstanceAiConversation', () => {
 					workflow: 1,
 					node: 0,
 					group: 0,
+					agent: 0,
 				},
 				mentionedWorkflowIds: ['wf-1'],
 			}),

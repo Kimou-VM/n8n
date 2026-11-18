@@ -515,11 +515,21 @@ describe('AssistantAgentProvider', () => {
 			await expect(on.environment.context.storedFiles?.list?.()).resolves.toEqual(files);
 		});
 
+		it('gives workflow runs no conversation files when the sandbox files flag is off', async () => {
+			const { provider, environment } = setup();
+
+			await provider.prepareTurn(startTurn());
+
+			expect(environment.context.storedFiles?.readBinary).toBeUndefined();
+			expect(environment.context.storedFiles?.storeWorkflowFile).toBeUndefined();
+		});
+
 		it('lets workflow runs take and return the files of the thread through the turn', async () => {
 			const { provider, environment } = setup();
 			const binary = { id: 'filesystem-v2:a', data: 'filesystem-v2', mimeType: 'image/png' };
 			const stored = { fileId: 'out-1', fileName: 'a.png', mimeType: 'image/png', sizeBytes: 3 };
 			const turn = startTurn({
+				sandboxFiles: turnSandboxFiles(),
 				readFileBinary: vi.fn(async () => binary),
 				storeWorkflowFile: vi.fn(async () => stored),
 			});

@@ -42,7 +42,7 @@ import type { AgentExecutionAdmission } from '../types/agent-queued-message';
 import type { FormattedTurnError } from '../types/agent-turn-outcome';
 import { systemChatMemoryResourceId } from '../utils/agent-memory-scope';
 import { buildInboundUserMessage } from '../utils/inbound-attachments';
-import { SYSTEM_CHAT_SOURCE } from '../utils/agent-thread-access';
+import { SYSTEM_CHAT_FILE_SOURCES, SYSTEM_CHAT_SOURCE } from '../utils/agent-thread-access';
 import { canUseSystemAgent } from './system-agent-access';
 import { SystemAgentHostEventChannel } from './system-agent-host-events';
 import { SystemAgentRegistry } from './system-agent-registry';
@@ -667,7 +667,7 @@ export class SystemAgentExecutionService {
 						...this.turnStateOf(thread),
 						emitHostEvent: hostEvents.emit,
 						readFile: async (fileId) => await this.readThreadFile(thread, resourceId, fileId),
-						...(await this.sandboxFilesOf()),
+						...(await this.sandboxFilesOf(thread, resourceId)),
 						executionId: admission.executionId,
 						message: payload.message,
 						attachments,
@@ -687,6 +687,7 @@ export class SystemAgentExecutionService {
 				: text;
 		await this.runTurn({
 			thread,
+			resourceId,
 			handle,
 			workspace,
 			hostEvents,
@@ -764,7 +765,7 @@ export class SystemAgentExecutionService {
 					...this.turnStateOf(thread),
 					emitHostEvent: hostEvents.emit,
 					readFile: async (fileId) => await this.readThreadFile(thread, resourceId, fileId),
-					...(await this.sandboxFilesOf()),
+					...(await this.sandboxFilesOf(thread, resourceId)),
 					runId,
 					toolCallId: pending.toolCallId,
 					checkpointHostMetadata,
@@ -789,6 +790,7 @@ export class SystemAgentExecutionService {
 		};
 		const done = this.runTurn({
 			thread,
+			resourceId,
 			handle,
 			workspace,
 			hostEvents,
@@ -934,9 +936,42 @@ export class SystemAgentExecutionService {
 	}
 
 	/** The sandbox files of project agents, with the same flag and caps. Set only when the flag is on. */
-	private async sandboxFilesOf(): Promise<Pick<SystemAgentStartTurn, 'sandboxFiles'>> {
+	private async sandboxFilesOf(
+		thread: AgentExecutionThread,
+		resourceId: string,
+	): Promise<Pick<SystemAgentStartTurn, 'sandboxFiles'>> {
 		if (!(await this.sandboxFiles.isEnabled())) return {};
-		return { sandboxFiles: { maxImportBytes: this.sandboxFiles.maxImportBytes } };
+		return {
+			sandboxFiles: {
+				maxImportBytes: this.sandboxFiles.maxImportBytes,
+				storeOutput: async (workspace, path, abortSignal) => {
+					const file = await this.sandboxFiles
+						.store(
+							workspace,
+							path,
+							{
+								agentId: thread.agentId,
+								projectId: thread.projectId,
+								threadId: thread.id,
+								// The reads and the downloads of the system chat find its files by resource.
+								resourceId,
+							},
+							abortSignal,
+						)
+						.catch((error: unknown) => {
+							// A cap or path error is for the model. A raw sandbox error, such as a missing file, is not.
+							if (error instanceof UserError || abortSignal?.aborted) throw error;
+							throw new UserError(`"${path}" could not be read from outputs/`, { cause: error });
+						});
+					return {
+						fileId: file.id,
+						fileName: file.fileName,
+						mimeType: file.mimeType,
+						sizeBytes: file.fileSizeBytes,
+					};
+				},
+			},
+		};
 	}
 
 	/** Read an attachment of the turn, from the system chat of the thread's owner. */
@@ -958,7 +993,7 @@ export class SystemAgentExecutionService {
 		const attachment = await this.attachmentService.getForSystemAgent(fileId, {
 			agentId: thread.agentId,
 			resourceId,
-			source: SYSTEM_CHAT_SOURCE,
+			sources: SYSTEM_CHAT_FILE_SOURCES,
 		});
 		if (attachment?.threadId !== thread.id) return undefined;
 		// The bytes load only on request, so a caller can check the size first.
@@ -1100,6 +1135,7 @@ export class SystemAgentExecutionService {
 	 */
 	private async runTurn({
 		thread,
+		resourceId,
 		handle,
 		workspace,
 		hostEvents,
@@ -1110,6 +1146,8 @@ export class SystemAgentExecutionService {
 		prepare,
 	}: {
 		thread: AgentExecutionThread;
+		/** The system chat memory resource of the thread owner. */
+		resourceId: string;
 		handle: SystemAgentTurnHandle;
 		workspace?: TurnWorkspace;
 		hostEvents: SystemAgentHostEventChannel;
@@ -1147,6 +1185,8 @@ export class SystemAgentExecutionService {
 				toolRegistry: handle.toolRegistry ?? new Map(),
 				mcpServerAttributions: new Map(),
 				context: { projectId: thread.projectId, agentId: thread.agentId, threadId: thread.id },
+				// The reads of the system chat find the sandbox files of the turn by this resource.
+				fileResourceId: resourceId,
 				chatSurface: 'system',
 				chatController: controller,
 				...(handle.onCompletingBoundary

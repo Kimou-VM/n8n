@@ -1713,10 +1713,24 @@ export interface InstanceAiStoredFile {
 	readContent(): Promise<Buffer | undefined>;
 }
 
+/** A conversation file, as the chat shows it. */
+export interface InstanceAiConversationFile {
+	fileId: string;
+	fileName: string;
+	mimeType: string;
+	sizeBytes: number;
+}
+
 /** The sandbox files feature of the host: conversation files in and out of the sandbox. */
 export interface InstanceAiSandboxFiles {
 	/** Most bytes that one `import-files` call copies, for all files together. */
 	maxImportBytes: number;
+	/**
+	 * Store one file of `outputs/` as a conversation file, or give the stored
+	 * file when its name and bytes did not change. `path` is relative to `outputs/`.
+	 * Throws when the file is missing or over a storage cap. The message is for the model.
+	 */
+	storeOutput(path: string, abortSignal?: AbortSignal): Promise<InstanceAiConversationFile>;
 }
 
 export interface InstanceAiStoredFileReader {

@@ -34,7 +34,10 @@ function setup(files: Record<string, InstanceAiStoredFile>) {
 		logger: { debug: vi.fn(), warn: vi.fn() },
 	} as unknown as InstanceAiContext;
 	const reader = { read: vi.fn(async (fileId: string) => await Promise.resolve(files[fileId])) };
-	const tool = createImportFilesTool(context, reader, workspace, { maxImportBytes: MAX_BYTES });
+	const tool = createImportFilesTool(context, reader, workspace, {
+		maxImportBytes: MAX_BYTES,
+		storeOutput: vi.fn(),
+	});
 	const run = async (input: unknown) =>
 		await executeTool<{
 			imported: Array<{ fileId: string; path: string; sizeBytes: number }>;

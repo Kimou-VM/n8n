@@ -14,6 +14,7 @@ import { Logger } from '@n8n/backend-common';
 import { GlobalConfig, type AiConfig } from '@n8n/config';
 import { UserRepository, type User } from '@n8n/db';
 import { Service } from '@n8n/di';
+import { UserError } from '@n8n/errors';
 import {
 	MAX_STEPS,
 	modelConfigId,
@@ -321,9 +322,15 @@ export class AssistantAgentProvider implements SystemAgentProvider<AssistantSand
 			read: async (fileId) => await turn.readFile(fileId),
 		};
 		// The turn has the sandbox files of project agents only when their flag is on.
-		if (turn.sandboxFiles) {
+		const { sandboxFiles } = turn;
+		if (sandboxFiles) {
+			const { workspace } = environment.context;
 			environment.context.sandboxFiles = {
-				maxImportBytes: turn.sandboxFiles.maxImportBytes,
+				maxImportBytes: sandboxFiles.maxImportBytes,
+				storeOutput: async (path, abortSignal) => {
+					if (!workspace) throw new UserError('This conversation has no sandbox');
+					return await sandboxFiles.storeOutput(workspace, path, abortSignal);
+				},
 			};
 		}
 

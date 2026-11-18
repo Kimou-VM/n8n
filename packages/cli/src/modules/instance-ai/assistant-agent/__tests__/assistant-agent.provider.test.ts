@@ -1,4 +1,4 @@
-import { ModelStreamStallError } from '@n8n/agents';
+import { ModelStreamStallError, type Workspace } from '@n8n/agents';
 import { ASSISTANT_TRACE_EVENT, ASSISTANT_WORKFLOWS_ARCHIVED_EVENT } from '@n8n/api-types';
 import type { Logger } from '@n8n/backend-common';
 import type { GlobalConfig } from '@n8n/config';
@@ -471,10 +471,51 @@ describe('AssistantAgentProvider', () => {
 
 			const on = setup();
 			await on.provider.prepareTurn(
-				startTurn({ sandboxFiles: { maxImportBytes: 200 * 1024 * 1024 } }),
+				startTurn({ sandboxFiles: { maxImportBytes: 200 * 1024 * 1024, storeOutput: vi.fn() } }),
 			);
 			expect(on.environment.context.sandboxFiles).toEqual({
 				maxImportBytes: 200 * 1024 * 1024,
+				storeOutput: expect.any(Function),
+			});
+		});
+
+		describe('storing a file of outputs/', () => {
+			async function prepareWithSandbox(workspace?: Workspace) {
+				const context = setup();
+				context.environment.context.workspace = workspace;
+				const turnStoreOutput = vi.fn(async () => ({
+					fileId: 'file-1',
+					fileName: 'report.csv',
+					mimeType: 'text/csv',
+					sizeBytes: 3,
+				}));
+				await context.provider.prepareTurn(
+					startTurn({ sandboxFiles: { maxImportBytes: 1, storeOutput: turnStoreOutput } }),
+				);
+				const sandboxFiles = context.environment.context.sandboxFiles;
+				if (!sandboxFiles) throw new Error('expected the sandbox files of the turn');
+				return { turnStoreOutput, storeOutput: sandboxFiles.storeOutput };
+			}
+
+			it('stores the file of the turn sandbox through the turn', async () => {
+				const workspace = mock<Workspace>();
+				const { turnStoreOutput, storeOutput } = await prepareWithSandbox(workspace);
+				const abortSignal = new AbortController().signal;
+
+				await expect(storeOutput('report.csv', abortSignal)).resolves.toEqual({
+					fileId: 'file-1',
+					fileName: 'report.csv',
+					mimeType: 'text/csv',
+					sizeBytes: 3,
+				});
+				expect(turnStoreOutput).toHaveBeenCalledWith(workspace, 'report.csv', abortSignal);
+			});
+
+			it('refuses to store a file when the conversation has no sandbox', async () => {
+				const { turnStoreOutput, storeOutput } = await prepareWithSandbox();
+
+				await expect(storeOutput('report.csv')).rejects.toThrow(UserError);
+				expect(turnStoreOutput).not.toHaveBeenCalled();
 			});
 		});
 

@@ -1733,9 +1733,22 @@ export interface InstanceAiSandboxFiles {
 	storeOutput(path: string, abortSignal?: AbortSignal): Promise<InstanceAiConversationFile>;
 }
 
+/** A file in the list of the thread's files. */
+export interface InstanceAiListedFile extends InstanceAiConversationFile {
+	/** `upload`: the user attached it. `sandbox`: it came from `outputs/` of the sandbox. */
+	origin: 'upload' | 'sandbox';
+	/** ISO date and time when n8n stored the file. */
+	createdAt: string;
+}
+
 export interface InstanceAiStoredFileReader {
 	/** Gives `undefined` when the thread has no such file. */
 	read(fileId: string): Promise<InstanceAiStoredFile | undefined>;
+	/**
+	 * The files of the thread, newest first. `read` finds each listed file.
+	 * The host sets it only when the sandbox files feature is on.
+	 */
+	list?(): Promise<InstanceAiListedFile[]>;
 }
 
 // ── Context bundle ───────────────────────────────────────────────────────────

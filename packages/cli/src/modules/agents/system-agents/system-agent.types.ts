@@ -100,6 +100,11 @@ export interface SystemAgentSandboxFiles {
 		path: string,
 		abortSignal?: AbortSignal,
 	): Promise<SystemAgentStoredFile>;
+	/**
+	 * The files of this thread, newest first: uploads of every turn and files
+	 * from the sandbox. `readFile` finds each listed file.
+	 */
+	listFiles(): Promise<SystemAgentListedFile[]>;
 }
 
 /** A file that a system-agent turn stored in its thread. */
@@ -108,6 +113,14 @@ export interface SystemAgentStoredFile {
 	fileName: string;
 	mimeType: string;
 	sizeBytes: number;
+}
+
+/** A file of a system-agent thread, as `listFiles` gives it. */
+export interface SystemAgentListedFile extends SystemAgentStoredFile {
+	/** `upload` for a file that the user attached, `sandbox` for a file that the agent stored. */
+	origin: 'upload' | 'sandbox';
+	/** ISO 8601 time when the file was stored. */
+	createdAt: string;
 }
 
 /** A stored file of a system-agent thread. */

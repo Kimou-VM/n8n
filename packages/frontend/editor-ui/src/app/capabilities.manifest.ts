@@ -161,12 +161,20 @@ const tagNames = {
 	nameOf: (id: string) => useTagsStore().tagsById[id]?.name,
 };
 
+// The stores skip a load only after it ends, so callers that start together share one load.
+let typeDescriptionsLoad: Promise<void> | undefined;
+
 const typeDescriptions = {
 	load: async () => {
-		await Promise.all([
+		typeDescriptionsLoad ??= Promise.all([
 			useNodeTypesStore().loadNodeTypesIfNotLoaded(),
 			useCredentialsStore().fetchCredentialTypes(false),
-		]);
+		])
+			.then(() => undefined)
+			.finally(() => {
+				typeDescriptionsLoad = undefined;
+			});
+		await typeDescriptionsLoad;
 	},
 	nodeTypes: () => useNodeTypesStore().allNodeTypes,
 	credentialTypeDisplayName: (name: string) =>

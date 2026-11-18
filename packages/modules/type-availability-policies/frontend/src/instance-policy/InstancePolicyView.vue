@@ -42,8 +42,7 @@ const activeTab = computed<RestrictedTypeKind | undefined>({
 	},
 	set: (tab) => {
 		// The open dialog belongs to the tab, so another tab closes it.
-		const { details: _closed, ...query } = route.query;
-		void router.replace({ query: { ...query, tab } });
+		void router.replace({ query: { ...queryWithoutDetails(), tab } });
 	},
 });
 
@@ -61,9 +60,13 @@ function openDetails(name: string) {
 	void router.replace({ query: { ...route.query, tab: activeTab.value, details: name } });
 }
 
-function closeDetails() {
+function queryWithoutDetails() {
 	const { details: _closed, ...query } = route.query;
-	void router.replace({ query });
+	return query;
+}
+
+function closeDetails() {
+	void router.replace({ query: queryWithoutDetails() });
 }
 
 // A user who skips the landing page on the way in goes back to Policies.

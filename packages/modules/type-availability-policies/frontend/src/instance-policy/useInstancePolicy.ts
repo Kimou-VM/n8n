@@ -15,14 +15,14 @@ export function useInstancePolicy() {
 	const { manageableKinds } = usePolicyAdminAccess();
 
 	async function load(): Promise<void> {
-		const { errors, accessErrors } = await store.load(manageableKinds.value);
-		if (errors.length > 0) {
-			toast.showError(
-				errors[0],
-				i18n.baseText('typeAvailabilityPolicies.instancePolicy.loadError'),
-			);
+		const {
+			errors: [error],
+			accessErrors: [accessError],
+		} = await store.load(manageableKinds.value);
+		if (error !== undefined) {
+			toast.showError(error, i18n.baseText('typeAvailabilityPolicies.instancePolicy.loadError'));
 		}
-		if (accessErrors.length > 0) showAccessError(accessErrors[0]);
+		if (accessError !== undefined) showAccessError(accessError);
 	}
 
 	/** Reads the access of the types again, for example after an earlier read failed. */

@@ -244,11 +244,14 @@ export const useProjectsStore = defineStore(STORES.PROJECTS, () => {
 		projectId: string,
 		dto: UpdateProjectWorkflowReviewSettingsDto,
 	): Promise<void> => {
-		currentProjectWorkflowReviewSettings.value = await updateProjectWorkflowReviewSettings(
+		const settings = await updateProjectWorkflowReviewSettings(
 			rootStore.restApiContext,
 			projectId,
 			dto,
 		);
+		if (currentProjectId.value === projectId) {
+			currentProjectWorkflowReviewSettings.value = settings;
+		}
 	};
 
 	const addMember = async (

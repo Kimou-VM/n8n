@@ -2,7 +2,7 @@ import { DuplicateLeaseKindError, InvalidLeaseKindError, UnknownLeaseKindError }
 import * as leases from '../index';
 import { LeaseService } from '../lease-service';
 import type { LeaseProvider } from '../provider';
-import { DEFAULT_LEASE_KIND_OPTIONS, MAX_LEASE_KIND_LENGTH } from '../types';
+import { DEFAULT_LEASE_KIND_OPTIONS } from '../types';
 import type { Lease, LeaseKind, LeaseSource, LeaseStatus } from '../types';
 
 type Tx = { id: string };
@@ -44,6 +44,7 @@ describe('LeaseService', () => {
 
 			expect(provider.registerSource).toHaveBeenCalledWith('kind-name', source);
 			expect(provider.registerHolder).toHaveBeenCalledTimes(1);
+			expect(provider.registerHolder.mock.calls[0][0]).toBe('kind-name');
 			expect(provider.registerSource.mock.invocationCallOrder[0]).toBeLessThan(
 				provider.registerHolder.mock.invocationCallOrder[0],
 			);
@@ -72,6 +73,35 @@ describe('LeaseService', () => {
 			expect(provider.registerHolder).toHaveBeenCalledTimes(1);
 		});
 
+		it('rejects a duplicate name while the first registration is pending', async () => {
+			const first = service.registerKind(makeKind());
+
+			await expect(service.registerKind(makeKind())).rejects.toThrow(DuplicateLeaseKindError);
+			await first;
+			expect(provider.registerHolder).toHaveBeenCalledTimes(1);
+		});
+
+		it('unregisters the kind when registerHolder rejects, so it can be registered again', async () => {
+			const providerError = new Error('provider failed');
+			provider.registerHolder.mockRejectedValueOnce(providerError);
+
+			await expect(service.registerKind(makeKind())).rejects.toBe(providerError);
+			await expect(service.changed('kind-name')).rejects.toThrow(UnknownLeaseKindError);
+			await expect(service.registerKind(makeKind())).resolves.toBeUndefined();
+			expect(provider.registerHolder).toHaveBeenCalledTimes(2);
+		});
+
+		it('unregisters the kind when registerSource throws', async () => {
+			const providerError = new Error('source failed');
+			provider.registerSource.mockImplementationOnce(() => {
+				throw providerError;
+			});
+
+			await expect(service.registerKind(makeKind())).rejects.toBe(providerError);
+			expect(provider.registerHolder).not.toHaveBeenCalled();
+			await expect(service.changed('kind-name')).rejects.toThrow(UnknownLeaseKindError);
+		});
+
 		it('merges kind options over the defaults', async () => {
 			await service.registerKind(
 				makeKind({ options: { startTimeoutSeconds: 10, leaseSeconds: 30 } }),
@@ -87,7 +117,19 @@ describe('LeaseService', () => {
 		it('uses the defaults when no options are given', async () => {
 			await service.registerKind(makeKind());
 
-			expect(provider.registerHolder.mock.calls[0][1]).toEqual(DEFAULT_LEASE_KIND_OPTIONS);
+			expect(provider.registerHolder.mock.calls[0][1]).toStrictEqual({
+				startTimeoutSeconds: 60,
+				maxFailedStarts: 5,
+			});
+		});
+
+		it('keeps the default start timeout when only maxFailedStarts is given', async () => {
+			await service.registerKind(makeKind({ options: { maxFailedStarts: 3 } }));
+
+			expect(provider.registerHolder.mock.calls[0][1]).toStrictEqual({
+				startTimeoutSeconds: 60,
+				maxFailedStarts: 3,
+			});
 		});
 
 		it('keeps a null maxFailedStarts', async () => {
@@ -101,7 +143,10 @@ describe('LeaseService', () => {
 				makeKind({ options: { startTimeoutSeconds: undefined, maxFailedStarts: undefined } }),
 			);
 
-			expect(provider.registerHolder.mock.calls[0][1]).toEqual(DEFAULT_LEASE_KIND_OPTIONS);
+			expect(provider.registerHolder.mock.calls[0][1]).toStrictEqual({
+				startTimeoutSeconds: 60,
+				maxFailedStarts: 5,
+			});
 		});
 
 		it('passes the lease to the kind handler', async () => {
@@ -113,6 +158,15 @@ describe('LeaseService', () => {
 			await hold(lease);
 
 			expect(kind.handler.hold).toHaveBeenCalledWith(lease);
+		});
+
+		it('rejects the hold when the kind handler rejects', async () => {
+			const handlerError = new Error('hold failed');
+			const kind = makeKind({ handler: { hold: vi.fn().mockRejectedValue(handlerError) } });
+			await service.registerKind(kind);
+			const hold = provider.registerHolder.mock.calls[0][2];
+
+			await expect(hold({ kind: 'kind-name', key: 'k1' } as Lease<Tx>)).rejects.toBe(handlerError);
 		});
 	});
 
@@ -143,6 +197,31 @@ describe('LeaseService', () => {
 
 			expect(provider.sync.mock.calls).toEqual([['first'], ['second']]);
 		});
+
+		it('resolves without calling the provider when no kind is registered', async () => {
+			await expect(service.syncAll()).resolves.toBeUndefined();
+
+			expect(provider.sync).not.toHaveBeenCalled();
+		});
+
+		it('syncs every kind when one fails, then rejects with every failure', async () => {
+			const firstError = new Error('first failed');
+			const thirdError = new Error('third failed');
+			provider.sync
+				.mockRejectedValueOnce(firstError)
+				.mockResolvedValueOnce(undefined)
+				.mockRejectedValueOnce(thirdError);
+			await service.registerKind(makeKind({ name: 'first' }));
+			await service.registerKind(makeKind({ name: 'second' }));
+			await service.registerKind(makeKind({ name: 'third' }));
+
+			const error = await service.syncAll().catch((e: unknown) => e);
+
+			expect(provider.sync.mock.calls).toEqual([['first'], ['second'], ['third']]);
+			expect(error).toBeInstanceOf(AggregateError);
+			expect((error as AggregateError).errors).toEqual([firstError, thirdError]);
+			expect((error as AggregateError).message).toBe('Failed to sync lease kinds: first, third');
+		});
 	});
 
 	describe('status', () => {
@@ -169,6 +248,7 @@ describe('LeaseService', () => {
 	describe('unknown kind', () => {
 		it('rejects changed and status without calling the provider', async () => {
 			await expect(service.changed('missing')).rejects.toThrow(UnknownLeaseKindError);
+			await expect(service.changed('missing', ['a'])).rejects.toThrow(UnknownLeaseKindError);
 			await expect(service.status('missing', ['a'])).rejects.toThrow(UnknownLeaseKindError);
 
 			expect(provider.sync).not.toHaveBeenCalled();
@@ -185,12 +265,14 @@ describe('package exports', () => {
 		expect(new leases.InvalidLeaseKindError('x')).toBeInstanceOf(Error);
 		expect(new leases.DuplicateLeaseKindError('x')).toBeInstanceOf(Error);
 		expect(new leases.UnknownLeaseKindError('x')).toBeInstanceOf(Error);
+	});
+
+	it('exports LeaseService', () => {
 		expect(leases.LeaseService).toBe(LeaseService);
 	});
 
 	it('exports the constants', () => {
 		expect(leases.MAX_LEASE_KIND_LENGTH).toBe(24);
-		expect(MAX_LEASE_KIND_LENGTH).toBe(24);
 		expect(leases.DEFAULT_LEASE_KIND_OPTIONS).toBe(DEFAULT_LEASE_KIND_OPTIONS);
 		expect(leases.DEFAULT_LEASE_KIND_OPTIONS).toEqual({
 			startTimeoutSeconds: 60,

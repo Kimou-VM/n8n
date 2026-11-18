@@ -7,11 +7,14 @@ const LEASE_KIND_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 /** Registers lease kinds with a provider and forwards their changes to it. */
 export class LeaseService<TTransaction> {
-	private readonly kinds = new Map<string, LeaseKind<TTransaction>>();
+	private readonly kinds = new Set<string>();
 
 	constructor(private readonly provider: LeaseProvider<TTransaction>) {}
 
-	/** Register a kind with the provider. Rejects when the name is invalid or already registered. */
+	/**
+	 * Register a kind with the provider. Rejects when the name is invalid or already registered.
+	 * When the provider fails, the kind is not registered and can be registered again.
+	 */
 	async registerKind(kind: LeaseKind<TTransaction>): Promise<void> {
 		const { name } = kind;
 		if (name.length > MAX_LEASE_KIND_LENGTH || !LEASE_KIND_NAME_PATTERN.test(name)) {
@@ -19,21 +22,26 @@ export class LeaseService<TTransaction> {
 		}
 		if (this.kinds.has(name)) throw new DuplicateLeaseKindError(name);
 
-		this.kinds.set(name, kind);
-
 		const {
 			leaseSeconds,
 			startTimeoutSeconds = DEFAULT_LEASE_KIND_OPTIONS.startTimeoutSeconds,
 			maxFailedStarts = DEFAULT_LEASE_KIND_OPTIONS.maxFailedStarts,
 		} = kind.options ?? {};
-		const options: LeaseKindOptions = { leaseSeconds, startTimeoutSeconds, maxFailedStarts };
+		const options: LeaseKindOptions = { startTimeoutSeconds, maxFailedStarts };
+		if (leaseSeconds !== undefined) options.leaseSeconds = leaseSeconds;
 
-		this.provider.registerSource(name, kind.source);
-		await this.provider.registerHolder(
-			name,
-			options,
-			async (lease) => await kind.handler.hold(lease),
-		);
+		this.kinds.add(name);
+		try {
+			this.provider.registerSource(name, kind.source);
+			await this.provider.registerHolder(
+				name,
+				options,
+				async (lease) => await kind.handler.hold(lease),
+			);
+		} catch (error) {
+			this.kinds.delete(name);
+			throw error;
+		}
 	}
 
 	/** Sync the leases of a registered kind, or only those with `keys`. */
@@ -48,8 +56,18 @@ export class LeaseService<TTransaction> {
 
 	/** Sync the leases of every registered kind. */
 	async syncAll(): Promise<void> {
-		for (const kind of this.kinds.keys()) {
-			await this.provider.sync(kind);
+		const failed: string[] = [];
+		const errors: unknown[] = [];
+		for (const kind of this.kinds) {
+			try {
+				await this.provider.sync(kind);
+			} catch (error) {
+				failed.push(kind);
+				errors.push(error);
+			}
+		}
+		if (errors.length > 0) {
+			throw new AggregateError(errors, `Failed to sync lease kinds: ${failed.join(', ')}`);
 		}
 	}
 

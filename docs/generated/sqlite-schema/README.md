@@ -109,9 +109,9 @@ Auto-generated from the SQLite migrations in @n8n/db. Do not edit by hand.
 | [instance_version_history](instance_version_history.md) | 5 |  | table |
 | [invalid_auth_token](invalid_auth_token.md) | 2 |  | table |
 | [mcp_registry_server](mcp_registry_server.md) | 7 |  | table |
-| [mcp_server](mcp_server.md) | 15 |  | table |
+| [mcp_server](mcp_server.md) | 17 |  | table |
 | [mcp_server_api_key](mcp_server_api_key.md) | 8 |  | table |
-| [mcp_server_call](mcp_server_call.md) | 18 |  | table |
+| [mcp_server_call](mcp_server_call.md) | 20 |  | table |
 | [mcp_server_resource](mcp_server_resource.md) | 10 |  | table |
 | [mcp_server_tool](mcp_server_tool.md) | 12 |  | table |
 | [migration_finding](migration_finding.md) | 10 |  | table |
@@ -1546,12 +1546,14 @@ erDiagram
 "mcp_server" {
   varchar_16_ accessMode
   boolean active
+  BOOLEAN captureIntent
   boolean confirmDestructive
   boolean confirmWrite
   datetime_3_ createdAt
   TEXT description
   varchar_36_ id PK
   TEXT instructions
+  BOOLEAN missingCapabilityTool
   varchar_128_ name
   varchar ownerId FK
   INTEGER rateLimitPerMinute
@@ -1582,10 +1584,12 @@ erDiagram
   varchar_36_ executionId
   varchar_36_ id PK
   TEXT input
+  TEXT intent
   varchar_16_ kind
   varchar_256_ name
   TEXT output
   varchar_36_ serverId FK
+  VARCHAR_36_ sessionId
   varchar_16_ status
   datetime_3_ updatedAt
   varchar_36_ workflowId

@@ -109,6 +109,11 @@ Auto-generated from the PostgreSQL migrations in @n8n/db. Do not edit by hand.
 | [public.instance_version_history](public.instance_version_history.md) | 5 |  | BASE TABLE |
 | [public.invalid_auth_token](public.invalid_auth_token.md) | 2 |  | BASE TABLE |
 | [public.mcp_registry_server](public.mcp_registry_server.md) | 7 |  | BASE TABLE |
+| [public.mcp_server](public.mcp_server.md) | 15 |  | BASE TABLE |
+| [public.mcp_server_api_key](public.mcp_server_api_key.md) | 8 |  | BASE TABLE |
+| [public.mcp_server_call](public.mcp_server_call.md) | 18 |  | BASE TABLE |
+| [public.mcp_server_resource](public.mcp_server_resource.md) | 10 |  | BASE TABLE |
+| [public.mcp_server_tool](public.mcp_server_tool.md) | 12 |  | BASE TABLE |
 | [public.migration_finding](public.migration_finding.md) | 10 |  | BASE TABLE |
 | [public.migration_finding_sync](public.migration_finding_sync.md) | 3 |  | BASE TABLE |
 | [public.migration_workflow_owner](public.migration_workflow_owner.md) | 7 |  | BASE TABLE |
@@ -369,6 +374,11 @@ erDiagram
 "public.instance_ai_thread_tabs" }o--|| "public.instance_ai_threads" : "FOREIGN KEY (#quot;threadId#quot;) REFERENCES instance_ai_threads(id) ON DELETE CASCADE"
 "public.instance_ai_threads" }o--|| "public.project" : "FOREIGN KEY (#quot;projectId#quot;) REFERENCES project(id) ON DELETE CASCADE"
 "public.instance_credential_assignment" }o--|| "public.credentials_entity" : "FOREIGN KEY (#quot;credentialId#quot;) REFERENCES credentials_entity(id) ON DELETE RESTRICT"
+"public.mcp_server" }o--|| "public.user" : "FOREIGN KEY (#quot;ownerId#quot;) REFERENCES #quot;user#quot;(id) ON DELETE CASCADE"
+"public.mcp_server_api_key" }o--|| "public.mcp_server" : "FOREIGN KEY (#quot;serverId#quot;) REFERENCES mcp_server(id) ON DELETE CASCADE"
+"public.mcp_server_call" }o--|| "public.mcp_server" : "FOREIGN KEY (#quot;serverId#quot;) REFERENCES mcp_server(id) ON DELETE CASCADE"
+"public.mcp_server_resource" }o--|| "public.mcp_server" : "FOREIGN KEY (#quot;serverId#quot;) REFERENCES mcp_server(id) ON DELETE CASCADE"
+"public.mcp_server_tool" }o--|| "public.mcp_server" : "FOREIGN KEY (#quot;serverId#quot;) REFERENCES mcp_server(id) ON DELETE CASCADE"
 "public.migration_finding" }o--|| "public.workflow_entity" : "FOREIGN KEY (#quot;workflowId#quot;) REFERENCES workflow_entity(id) ON DELETE CASCADE"
 "public.migration_workflow_owner" }o--o| "public.user" : "FOREIGN KEY (#quot;userId#quot;) REFERENCES #quot;user#quot;(id) ON DELETE SET NULL"
 "public.migration_workflow_owner" }o--o| "public.user" : "FOREIGN KEY (#quot;assignedById#quot;) REFERENCES #quot;user#quot;(id) ON DELETE SET NULL"
@@ -1546,6 +1556,79 @@ erDiagram
   varchar_50_ status
   timestamp_3__with_time_zone updatedAt
   varchar_50_ version
+}
+"public.mcp_server" {
+  varchar_16_ accessMode
+  boolean active
+  boolean confirmDestructive
+  boolean confirmWrite
+  timestamp_3__with_time_zone createdAt
+  text description
+  varchar_36_ id
+  text instructions
+  varchar_128_ name
+  uuid ownerId FK
+  integer rateLimitPerMinute
+  json revokedUserIds
+  varchar_16_ shareVisibility
+  varchar_64_ slug
+  timestamp_3__with_time_zone updatedAt
+}
+"public.mcp_server_api_key" {
+  timestamp_3__with_time_zone createdAt
+  varchar_36_ id
+  varchar_128_ keyHash
+  varchar_16_ keyHint
+  varchar_128_ label
+  timestamp_3__with_time_zone lastUsedAt
+  varchar_36_ serverId FK
+  timestamp_3__with_time_zone updatedAt
+}
+"public.mcp_server_call" {
+  varchar_36_ apiKeyId
+  varchar_320_ caller
+  varchar_16_ callerType
+  uuid callerUserId
+  varchar_128_ clientName
+  timestamp_3__with_time_zone createdAt
+  integer durationMs
+  text error
+  varchar_36_ executionId
+  varchar_36_ id
+  text input
+  varchar_16_ kind
+  varchar_256_ name
+  text output
+  varchar_36_ serverId FK
+  varchar_16_ status
+  timestamp_3__with_time_zone updatedAt
+  varchar_36_ workflowId
+}
+"public.mcp_server_resource" {
+  text content
+  timestamp_3__with_time_zone createdAt
+  text description
+  varchar_36_ id
+  varchar_16_ kind
+  varchar_128_ mimeType
+  varchar_256_ name
+  varchar_36_ serverId FK
+  varchar_36_ targetId
+  timestamp_3__with_time_zone updatedAt
+}
+"public.mcp_server_tool" {
+  varchar_16_ behavior
+  timestamp_3__with_time_zone createdAt
+  text description
+  boolean enabled
+  varchar_36_ id
+  json inputs
+  varchar_16_ kind
+  varchar_64_ name
+  integer position
+  varchar_36_ serverId FK
+  varchar_36_ targetId
+  timestamp_3__with_time_zone updatedAt
 }
 "public.migration_finding" {
   timestamp_3__with_time_zone createdAt
